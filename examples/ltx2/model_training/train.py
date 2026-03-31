@@ -1,4 +1,4 @@
-import torch, os, argparse, accelerate, warnings
+import torch, os, argparse, accelerate, warnings, json
 from diffsynth.core import UnifiedDataset
 from diffsynth.core.data.operators import LoadAudioWithTorchaudio, ToAbsolutePath, RouteByType, SequencialProcess
 from diffsynth.pipelines.ltx2_audio_video import LTX2AudioVideoPipeline, ModelConfig
@@ -61,7 +61,7 @@ class LTX2TrainingModule(DiffusionTrainingModule):
     def parse_extra_inputs(self, data, extra_inputs, inputs_shared):
         for extra_input in extra_inputs:
             if extra_input == "input_image":
-                inputs_shared["input_images"] = [data["video"][0]]
+                inputs_shared["input_images"] = [data["clip_path"][0]]
                 inputs_shared["input_images_indexes"] = [0]
                 inputs_shared["input_images_strength"] = 1.0
             else:
@@ -69,15 +69,15 @@ class LTX2TrainingModule(DiffusionTrainingModule):
         return inputs_shared
     
     def get_pipeline_inputs(self, data):
-        inputs_posi = {"prompt": data["prompt"]}
+        inputs_posi = {"prompt": data["text_annot"]}
         inputs_nega = {}
         inputs_shared = {
             # Assume you are using this pipeline for inference,
             # please fill in the input parameters.
-            "input_video": data["video"],
-            "height": data["video"][0].size[1],
-            "width": data["video"][0].size[0],
-            "num_frames": len(data["video"]),
+            "input_video": data["clip_path"],
+            "height": data["clip_path"][0].size[1],
+            "width": data["clip_path"][0].size[0],
+            "num_frames": len(data["clip_path"]),
             "frame_rate": data.get("frame_rate", 24),
             # Please do not modify the following parameters
             # unless you clearly know what this will cause.
@@ -108,18 +108,47 @@ def ltx2_parser():
     parser.add_argument("--tokenizer_path", type=str, default=None, help="Path to tokenizer.")
     parser.add_argument("--frame_rate", type=float, default=24, help="frame rate of the training videos.")
     parser.add_argument("--initialize_model_on_cpu", default=False, action="store_true", help="Whether to initialize models on CPU.")
+    parser.add_argument("--dataset_config_path", type=str, default=None, help="Path to a JSON config file containing multiple datasets. Each entry should have 'root' and 'annotation' keys.")
     return parser
 
 
-if __name__ == "__main__":
-    parser = ltx2_parser()
-    args = parser.parse_args()
-    accelerator = accelerate.Accelerator(
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        kwargs_handlers=[accelerate.DistributedDataParallelKwargs(find_unused_parameters=args.find_unused_parameters)],
-    )
-    video_processor = UnifiedDataset.default_video_operator(
-            base_path=args.dataset_base_path,
+class CombinedDataset(torch.utils.data.ConcatDataset):
+    """
+    A ConcatDataset wrapper that adds the load_from_cache attribute
+    required by the training runner.
+    """
+    def __init__(self, datasets):
+        super().__init__(datasets)
+        # Combined datasets always use metadata (not cache), so load_from_cache is False
+        self.load_from_cache = False
+
+
+def create_dataset_from_config(config_path, args):
+    """
+    Create a combined dataset from a config file containing multiple datasets.
+    
+    Config file format (JSON):
+    {
+        "dataset_name_1": {
+            "root": "/path/to/dataset1",
+            "annotation": "/path/to/annotation1.json"
+        },
+        "dataset_name_2": {
+            "root": "/path/to/dataset2", 
+            "annotation": "/path/to/annotation2.json"
+        }
+    }
+    """
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    
+    datasets = []
+    for dataset_name, dataset_info in config.items():
+        base_path = dataset_info["root"]
+        metadata_path = dataset_info["annotation"]
+        
+        video_processor = UnifiedDataset.default_video_operator(
+            base_path=base_path,
             max_pixels=args.max_pixels,
             height=args.height,
             width=args.width,
@@ -131,20 +160,69 @@ if __name__ == "__main__":
             frame_rate=args.frame_rate,
             fix_frame_rate=True,
         )
-    dataset = UnifiedDataset(
-        base_path=args.dataset_base_path,
-        metadata_path=args.dataset_metadata_path,
-        repeat=args.dataset_repeat,
-        data_file_keys=args.data_file_keys.split(","),
-        main_data_operator=video_processor,
-        special_operator_map={
-            "input_audio": ToAbsolutePath(args.dataset_base_path) >> LoadAudioWithTorchaudio(num_frames=args.num_frames, time_division_factor=8, time_division_remainder=1, frame_rate=args.frame_rate),
-            "in_context_videos": RouteByType(operator_map=[
-                (str, video_processor),
-                (list, SequencialProcess(video_processor)),
-            ]),
-        }
+        dataset = UnifiedDataset(
+            base_path=base_path,
+            metadata_path=metadata_path,
+            repeat=args.dataset_repeat,
+            data_file_keys=args.data_file_keys.split(","),
+            main_data_operator=video_processor,
+            special_operator_map={
+                "input_audio": ToAbsolutePath(base_path) >> LoadAudioWithTorchaudio(num_frames=args.num_frames, time_division_factor=8, time_division_remainder=1, frame_rate=args.frame_rate),
+                "in_context_videos": RouteByType(operator_map=[
+                    (str, video_processor),
+                    (list, SequencialProcess(video_processor)),
+                ]),
+            }
+        )
+        dataset.load_metadata(metadata_path)
+        print(f"Loaded dataset '{dataset_name}': {len(dataset)} samples")
+        datasets.append(dataset)
+    
+    combined_dataset = CombinedDataset(datasets)
+    print(f"Total combined dataset size: {len(combined_dataset)} samples")
+    return combined_dataset
+
+
+if __name__ == "__main__":
+    parser = ltx2_parser()
+    args = parser.parse_args()
+    accelerator = accelerate.Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        kwargs_handlers=[accelerate.DistributedDataParallelKwargs(find_unused_parameters=args.find_unused_parameters)],
     )
+    # Create dataset: either from config file (multiple datasets) or single dataset
+    if args.dataset_config_path is not None:
+        # Load multiple datasets from config file
+        dataset = create_dataset_from_config(args.dataset_config_path, args)
+    else:
+        # Original single dataset mode
+        video_processor = UnifiedDataset.default_video_operator(
+                base_path=args.dataset_base_path,
+                max_pixels=args.max_pixels,
+                height=args.height,
+                width=args.width,
+                height_division_factor=32,
+                width_division_factor=32,
+                num_frames=args.num_frames,
+                time_division_factor=8,
+                time_division_remainder=1,
+                frame_rate=args.frame_rate,
+                fix_frame_rate=True,
+            )
+        dataset = UnifiedDataset(
+            base_path=args.dataset_base_path,
+            metadata_path=args.dataset_metadata_path,
+            repeat=args.dataset_repeat,
+            data_file_keys=args.data_file_keys.split(","),
+            main_data_operator=video_processor,
+            special_operator_map={
+                "input_audio": ToAbsolutePath(args.dataset_base_path) >> LoadAudioWithTorchaudio(num_frames=args.num_frames, time_division_factor=8, time_division_remainder=1, frame_rate=args.frame_rate),
+                "in_context_videos": RouteByType(operator_map=[
+                    (str, video_processor),
+                    (list, SequencialProcess(video_processor)),
+                ]),
+            }
+        )
     model = LTX2TrainingModule(
         model_paths=args.model_paths,
         model_id_with_origin_paths=args.model_id_with_origin_paths,

@@ -139,7 +139,11 @@ class DiffusionTrainingModule(torch.nn.Module):
         offload_models = [] if offload_models is None else offload_models.split(",")
         model_configs = []
         if model_paths is not None:
-            model_paths = json.loads(model_paths)
+            if model_paths.endswith(".json") and os.path.isfile(model_paths):
+                with open(model_paths, "r") as f:
+                    model_paths = json.load(f)
+            else:
+                model_paths = json.loads(model_paths)
             for path in model_paths:
                 vram_config = self.parse_vram_config(
                     fp8=path in fp8_models,

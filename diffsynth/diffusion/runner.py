@@ -31,6 +31,8 @@ def launch_training_task(
     model, optimizer, dataloader, scheduler = accelerator.prepare(model, optimizer, dataloader, scheduler)
     initialize_deepspeed_gradient_checkpointing(accelerator)
     for epoch_id in range(num_epochs):
+        if hasattr(dataloader.sampler, "set_epoch"):
+            dataloader.sampler.set_epoch(epoch_id)
         for data in tqdm(dataloader):
             with accelerator.accumulate(model):
                 optimizer.zero_grad()

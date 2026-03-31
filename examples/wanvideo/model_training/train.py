@@ -1,4 +1,4 @@
-import torch, os, argparse, accelerate, warnings
+import torch, os, argparse, accelerate, warnings, json
 from diffsynth.core import UnifiedDataset
 from diffsynth.core.data.operators import LoadVideo, LoadAudio, ImageCropAndResize, ToAbsolutePath
 from diffsynth.pipelines.wan_video import WanVideoPipeline, ModelConfig
@@ -65,9 +65,9 @@ class WanTrainingModule(DiffusionTrainingModule):
     def parse_extra_inputs(self, data, extra_inputs, inputs_shared):
         for extra_input in extra_inputs:
             if extra_input == "input_image":
-                inputs_shared["input_image"] = data["video"][0]
+                inputs_shared["input_image"] = data["clip_path"][0]
             elif extra_input == "end_image":
-                inputs_shared["end_image"] = data["video"][-1]
+                inputs_shared["end_image"] = data["clip_path"][-1]
             elif extra_input == "reference_image" or extra_input == "vace_reference_image":
                 inputs_shared[extra_input] = data[extra_input][0]
             else:
@@ -78,15 +78,15 @@ class WanTrainingModule(DiffusionTrainingModule):
         return inputs_shared
     
     def get_pipeline_inputs(self, data):
-        inputs_posi = {"prompt": data["prompt"]}
+        inputs_posi = {"prompt": data["text_annot"]}
         inputs_nega = {}
         inputs_shared = {
             # Assume you are using this pipeline for inference,
             # please fill in the input parameters.
-            "input_video": data["video"],
-            "height": data["video"][0].size[1],
-            "width": data["video"][0].size[0],
-            "num_frames": len(data["video"]),
+            "input_video": data["clip_path"],
+            "height": data["clip_path"][0].size[1],
+            "width": data["clip_path"][0].size[0],
+            "num_frames": len(data["clip_path"]),
             # Please do not modify the following parameters
             # unless you clearly know what this will cause.
             "cfg_scale": 1,
@@ -120,8 +120,74 @@ def wan_parser():
     parser.add_argument("--max_timestep_boundary", type=float, default=1.0, help="Max timestep boundary (for mixed models, e.g., Wan-AI/Wan2.2-I2V-A14B).")
     parser.add_argument("--min_timestep_boundary", type=float, default=0.0, help="Min timestep boundary (for mixed models, e.g., Wan-AI/Wan2.2-I2V-A14B).")
     parser.add_argument("--initialize_model_on_cpu", default=False, action="store_true", help="Whether to initialize models on CPU.")
+    parser.add_argument("--dataset_config_path", type=str, default=None, help="Path to a JSON config file containing multiple datasets. Each entry should have 'root' and 'annotation' keys.")
     parser.add_argument("--framewise_decoding", default=False, action="store_true", help="Enable it if this model is a WanToDance global model.")
     return parser
+
+
+class CombinedDataset(torch.utils.data.ConcatDataset):
+    """
+    A ConcatDataset wrapper that adds the load_from_cache attribute
+    required by the training runner.
+    """
+    def __init__(self, datasets):
+        super().__init__(datasets)
+        # Combined datasets always use metadata (not cache), so load_from_cache is False
+        self.load_from_cache = False
+
+
+def create_dataset_from_config(config_path, args):
+    """
+    Create a combined dataset from a config file containing multiple datasets.
+    
+    Config file format (JSON):
+    {
+        "dataset_name_1": {
+            "root": "/path/to/dataset1",
+            "annotation": "/path/to/annotation1.json"
+        },
+        "dataset_name_2": {
+            "root": "/path/to/dataset2", 
+            "annotation": "/path/to/annotation2.json"
+        }
+    }
+    """
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    
+    datasets = []
+    for dataset_name, dataset_info in config.items():
+        base_path = dataset_info["root"]
+        metadata_path = dataset_info["annotation"]
+        
+        dataset = UnifiedDataset(
+            base_path=base_path,
+            metadata_path=metadata_path,
+            repeat=args.dataset_repeat,
+            data_file_keys=args.data_file_keys.split(","),
+            main_data_operator=UnifiedDataset.default_video_operator(
+                base_path=base_path,
+                max_pixels=args.max_pixels,
+                height=args.height,
+                width=args.width,
+                height_division_factor=16,
+                width_division_factor=16,
+                num_frames=args.num_frames,
+                time_division_factor=4,
+                time_division_remainder=1,
+            ),
+            special_operator_map={
+                "animate_face_video": ToAbsolutePath(base_path) >> LoadVideo(args.num_frames, 4, 1, frame_processor=ImageCropAndResize(512, 512, None, 16, 16)),
+                "input_audio": ToAbsolutePath(base_path) >> LoadAudio(sr=16000),
+            }
+        )
+        dataset.load_metadata(metadata_path)
+        print(f"Loaded dataset '{dataset_name}': {len(dataset)} samples")
+        datasets.append(dataset)
+    
+    combined_dataset = CombinedDataset(datasets)
+    print(f"Total combined dataset size: {len(combined_dataset)} samples")
+    return combined_dataset
 
 
 if __name__ == "__main__":
@@ -131,28 +197,35 @@ if __name__ == "__main__":
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         kwargs_handlers=[accelerate.DistributedDataParallelKwargs(find_unused_parameters=args.find_unused_parameters)],
     )
-    dataset = UnifiedDataset(
-        base_path=args.dataset_base_path,
-        metadata_path=args.dataset_metadata_path,
-        repeat=args.dataset_repeat,
-        data_file_keys=args.data_file_keys.split(","),
-        main_data_operator=UnifiedDataset.default_video_operator(
+    
+    # Create dataset: either from config file (multiple datasets) or single dataset
+    if args.dataset_config_path is not None:
+        # Load multiple datasets from config file
+        dataset = create_dataset_from_config(args.dataset_config_path, args)
+    else:
+        # Original single dataset mode
+        dataset = UnifiedDataset(
             base_path=args.dataset_base_path,
-            max_pixels=args.max_pixels,
-            height=args.height,
-            width=args.width,
-            height_division_factor=16,
-            width_division_factor=16,
-            num_frames=args.num_frames,
-            time_division_factor=4 if not args.framewise_decoding else 1,
-            time_division_remainder=1 if not args.framewise_decoding else 0,
-        ),
-        special_operator_map={
-            "animate_face_video": ToAbsolutePath(args.dataset_base_path) >> LoadVideo(args.num_frames, 4, 1, frame_processor=ImageCropAndResize(512, 512, None, 16, 16)),
-            "input_audio": ToAbsolutePath(args.dataset_base_path) >> LoadAudio(sr=16000),
-            "wantodance_music_path": ToAbsolutePath(args.dataset_base_path),
-        }
-    )
+            metadata_path=args.dataset_metadata_path,
+            repeat=args.dataset_repeat,
+            data_file_keys=args.data_file_keys.split(","),
+            main_data_operator=UnifiedDataset.default_video_operator(
+                base_path=args.dataset_base_path,
+                max_pixels=args.max_pixels,
+                height=args.height,
+                width=args.width,
+                height_division_factor=16,
+                width_division_factor=16,
+                num_frames=args.num_frames,
+                time_division_factor=4 if not args.framewise_decoding else 1,
+                time_division_remainder=1 if not args.framewise_decoding else 0,
+            ),
+            special_operator_map={
+                "animate_face_video": ToAbsolutePath(args.dataset_base_path) >> LoadVideo(args.num_frames, 4, 1, frame_processor=ImageCropAndResize(512, 512, None, 16, 16)),
+                "input_audio": ToAbsolutePath(args.dataset_base_path) >> LoadAudio(sr=16000),
+                "wantodance_music_path": ToAbsolutePath(args.dataset_base_path),
+            }
+        )
     model = WanTrainingModule(
         model_paths=args.model_paths,
         model_id_with_origin_paths=args.model_id_with_origin_paths,
