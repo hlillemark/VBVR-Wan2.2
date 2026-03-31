@@ -31,7 +31,7 @@
 
 </div>
 
-This repository provides the training and evaluation code for the **VBVR** (Very Big Video Reasoning) project. We support fine-tuning **Wan2.2-I2V-A14B** and **LTX-2.3** video generation models on the VBVR dataset and evaluating them on the VBVR-Bench benchmark.
+This repository provides the training and inference code for the **VBVR** (Very Big Video Reasoning) project. We support fine-tuning **Wan2.2-I2V-A14B** and **LTX-2.3** video generation models on the VBVR dataset and evaluating them on the VBVR-Bench benchmark.
 
 
 ### 1. Installation
@@ -130,7 +130,7 @@ data/VBVR-Bench/
     └── ...
 ```
 
-### 5. Pre Evaluation, Inference on VBVR-Bench data
+### 5. Before Evaluation, Inference on VBVR-Bench data
 
 #### Wan2.2-I2V-A14B Inference
 
@@ -162,10 +162,13 @@ python examples/ltx2/model_training/validate_lora/eval_vbvr_bench.py \
     --eval_root ./data/VBVR-Bench \
     --output_root ./outputs/eval/LTX2.3_base 
 ```
+### 6. Evaluation on VBVR-Bnech
 
-### 6. Submit Results to Leaderboard
+After generating videos, you can evaluateyour results on the [VBVR-Bench](https://github.com/Video-Reason/VBVR-EvalKit) following the instructions.
 
-After generating videos, you can evaluate and submit your results to the [VBVR-Bench Leaderboard](https://huggingface.co/spaces/Video-Reason/VBVR-Bench-Leaderboard) following the instructions on the leaderboard page.
+### 7. Submit Results to Leaderboard
+
+After evaluation, you can submit your results to the [VBVR-Bench Leaderboard](https://huggingface.co/spaces/Video-Reason/VBVR-Bench-Leaderboard) following the instructions on the leaderboard page.
 
 ### Citation
 
