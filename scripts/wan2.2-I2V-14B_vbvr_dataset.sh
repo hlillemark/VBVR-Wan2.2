@@ -31,7 +31,7 @@ DATASET_REPEAT=1
 LEARNING_RATE=1e-4
 NUM_EPOCHS=1
 LORA_RANK=32
-SAVE_STEPS=1000
+SAVE_STEPS=10000
 
 # Output directories for trained LoRA weights
 HIGH_NOISE_OUTPUT_PATH="./outputs/Wan2.2-I2V-14B_vbvr/high_noise"
