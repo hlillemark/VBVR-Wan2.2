@@ -1,14 +1,182 @@
-# DiffSynth-Studio
+## VBVR: A Very Big Video Reasoning Suite
 
-<a href="https://github.com/modelscope/DiffSynth-Studio"><img src=".github/workflows/logo.gif" title="Logo" style="max-width:100%;" width="55" /></a> <a href="https://trendshift.io/repositories/10946" target="_blank"><img src="https://trendshift.io/api/badge/repositories/10946" alt="modelscope%2FDiffSynth-Studio | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a></p>
+<div align="center">
 
-[![PyPI](https://img.shields.io/pypi/v/DiffSynth)](https://pypi.org/project/DiffSynth/)
-[![license](https://img.shields.io/github/license/modelscope/DiffSynth-Studio.svg)](https://github.com/modelscope/DiffSynth-Studio/blob/master/LICENSE)
-[![open issues](https://isitmaintained.com/badge/open/modelscope/DiffSynth-Studio.svg)](https://github.com/modelscope/DiffSynth-Studio/issues)
-[![GitHub pull-requests](https://img.shields.io/github/issues-pr/modelscope/DiffSynth-Studio.svg)](https://GitHub.com/modelscope/DiffSynth-Studio/pull/)
-[![GitHub latest commit](https://badgen.net/github/last-commit/modelscope/DiffSynth-Studio)](https://GitHub.com/modelscope/DiffSynth-Studio/commit/)
+<p align="center">
+    <a href="https://video-reason.com/" target="_blank">
+        <img alt="Homepage" src="https://img.shields.io/badge/Project%20-%20Homepage-4285F4" height="20" />
+    </a>
+    <a href="https://arxiv.org/abs/2602.20159" target="_blank">
+        <img alt="arXiv" src="https://img.shields.io/badge/arXiv-VBVR_paper-red?logo=arxiv" height="20" />
+    </a>
+    <a href="https://huggingface.co/Video-Reason/VBVR-Wan2.2" target="_blank">
+        <img alt="VBVR-Wan2.2" src="https://img.shields.io/badge/%F0%9F%A4%97%20_VBVR_Wan2.2-Models-ffc107?color=ffc107&logoColor=white" height="20" />
+    </a>
+    <a href="https://huggingface.co/datasets/Video-Reason/VBVR-Dataset" target="_blank">
+        <img alt="VBVR-Dataset" src="https://img.shields.io/badge/%F0%9F%A4%97%20_VBVR-Dataset-ffc107?color=ffc107&logoColor=white" height="20" />
+    </a>
+    <a href="https://huggingface.co/datasets/Video-Reason/VBVR-Bench-Data" target="_blank">
+        <img alt="VBVR-Bench-Data" src="https://img.shields.io/badge/%F0%9F%A4%97%20_VBVR_Bench-Dataset-ffc107?color=ffc107&logoColor=white" height="20" />
+    </a>
+    <a href="https://huggingface.co/spaces/Video-Reason/VBVR-Bench-Leaderboard" target="_blank">
+        <img alt="Leaderboard" src="https://img.shields.io/badge/%F0%9F%A4%97%20_VBVR_Bench-Leaderboard-ffc107?color=ffc107&logoColor=white" height="20" />
+    </a>
+    <a href="https://github.com/Video-Reason/VBVR-EvalKit" target="_blank">
+        <img alt="VBVR-Bench Code" src="https://img.shields.io/badge/VBVR_Bench-Code-100000?style=flat-square&logo=github&logoColor=white" height="20" />
+    </a>
+    <a href="https://www.youtube.com/watch?v=Gs9TPZmzo-s" target="_blank">
+        <img alt="Video" src="https://img.shields.io/badge/YouTube-Video-FF0000?logo=YouTube&logoColor=white" height="20" />
+    </a>
+</p>
 
-[切换到中文版](./README_zh.md)
+</div>
+
+This repository provides the training and evaluation code for the **VBVR** (Very Big Video Reasoning) project. We support fine-tuning **Wan2.2-I2V-A14B** and **LTX-2.3** video generation models on the VBVR dataset and evaluating them on the VBVR-Bench benchmark.
+
+
+### 1. Installation
+
+```bash
+git clone https://github.com/Video-Reason/VBVR.git
+cd VBVR
+pip install -e .
+```
+
+### 2. Download Training Data (VBVR-Dataset)
+
+Download the VBVR-Dataset from Hugging Face and extract it into the `data/` directory:
+
+```bash
+# Install huggingface_hub if not already installed
+pip install huggingface_hub
+
+# Download the dataset
+huggingface-cli download Video-Reason/VBVR-Dataset --repo-type dataset --local-dir ./data/VBVR-Dataset
+```
+
+After downloading, the training data config file [`configs/vbvr_dataset.json`](configs/vbvr_dataset.json) expects the following structure:
+
+```
+data/
+└── VBVR-Dataset/
+    ├── G-11_handle_object_reappearance_data-generator/
+    │   ├── 00000/
+    │   │   ├── clip.mp4
+    │   │   └── ...
+    │   └── ...
+    ├── G-12_grid_obtaining_award_data-generator/
+    └── ...
+```
+
+### 3. Training
+
+#### Wan2.2-I2V-A14B
+
+Wan2.2-I2V-A14B uses a MOE architecture with separate high-noise and low-noise models. The training script trains LoRA adapters for both:
+
+| Model | Timestep Range | Description |
+|-------|---------------|-------------|
+| High Noise (`dit`) | 0 – 0.358 | Handles early denoising steps |
+| Low Noise (`dit2`) | 0.358 – 1.0 | Handles later denoising steps |
+
+```bash
+# Single-node multi-GPU training (default: 8 GPUs)
+bash scripts/Wan2.2-I2V-14B_vbvr_dataset.sh
+
+# Customize GPU/node count via environment variables
+NUM_GPUS=4 NUM_NODES=2 MASTER_ADDR=<master_ip> bash scripts/Wan2.2-I2V-14B_vbvr_dataset.sh
+```
+
+See [`scripts/Wan2.2-I2V-14B_vbvr_dataset.sh`](scripts/Wan2.2-I2V-14B_vbvr_dataset.sh) for all configurable parameters.
+
+#### LTX-2.3 I2AV
+
+LTX-2.3 training uses a two-stage approach: data processing (encoding) followed by LoRA training:
+
+```bash
+# Single-node multi-GPU training (default: 8 GPUs)
+bash scripts/LTX2.3-I2AV_vbvr_dataset.sh
+
+# Customize GPU/node count via environment variables
+NUM_GPUS=4 NUM_NODES=2 MASTER_ADDR=<master_ip> bash scripts/LTX2.3-I2AV_vbvr_dataset.sh
+```
+
+See [`scripts/LTX2.3-I2AV_vbvr_dataset.sh`](scripts/LTX2.3-I2AV_vbvr_dataset.sh) for all configurable parameters.
+
+
+### 3. Download Evaluation Data (VBVR-Bench)
+
+Download the VBVR-Bench evaluation data from Hugging Face:
+
+```bash
+huggingface-cli download Video-Reason/VBVR-Bench-Data --repo-type dataset --local-dir ./data/VBVR-Bench
+```
+
+The evaluation data has the following structure:
+
+```
+data/VBVR-Bench/
+├── In-Domain_50/
+│   ├── G-xxx_task_name_data-generator/
+│   │   ├── 00000/
+│   │   │   ├── first_frame.png
+│   │   │   ├── final_frame.png
+│   │   │   ├── ground_truth.mp4
+│   │   │   └── prompt.txt
+│   │   ├── 00001/
+│   │   └── ...
+│   └── ...
+└── Out-of-Domain_50/
+    └── ...
+```
+
+### 5. Pre Evaluation, Inference on VBVR-Bench data
+
+#### Wan2.2-I2V-A14B Inference
+
+```bash
+# Evaluate with trained LoRA
+python examples/wanvideo/model_training/validate_lora/eval_vbvr_bench.py \
+    --eval_root ./data/VBVR-Bench \
+    --output_root ./outputs/eval/VBVR-Wan2.2 \
+    --high_noise_lora_path ./outputs/Wan2.2-I2V-14B_vbvr/high_noise/epoch-0.safetensors \
+    --low_noise_lora_path ./outputs/Wan2.2-I2V-14B_vbvr/low_noise/epoch-0.safetensors
+
+# Evaluate base model (no LoRA)
+python examples/wanvideo/model_training/validate_lora/eval_vbvr_bench.py \
+    --eval_root ./data/VBVR-Bench \
+    --output_root ./outputs/eval/Wan2.2_base
+```
+
+#### LTX-2.3 Inference
+
+```bash
+# Evaluate with trained LoRA
+python examples/ltx2/model_training/validate_lora/eval_vbvr_bench.py \
+    --eval_root ./data/VBVR-Bench \
+    --output_root ./outputs/eval/LTX2.3_lora \
+    --lora_path ./outputs/LTX2.3-I2AV_vbvr/model/epoch-0.safetensors 
+
+# Evaluate base model (no LoRA)
+python examples/ltx2/model_training/validate_lora/eval_vbvr_bench.py \
+    --eval_root ./data/VBVR-Bench \
+    --output_root ./outputs/eval/LTX2.3_base 
+```
+
+### 6. Submit Results to Leaderboard
+
+After generating videos, you can evaluate and submit your results to the [VBVR-Bench Leaderboard](https://huggingface.co/spaces/Video-Reason/VBVR-Bench-Leaderboard) following the instructions on the leaderboard page.
+
+### Citation
+
+```bibtex
+@article{vbvr2026,
+      title={A Very Big Video Reasoning Suite}, 
+      author={Maijunxian Wang and Ruisi Wang and Juyi Lin and Ran Ji and Thaddäus Wiedemer and Qingying Gao and Dezhi Luo and Yaoyao Qian and Lianyu Huang and Zelong Hong and Jiahui Ge and Qianli Ma and Hang He and Yifan Zhou and Lingzi Guo and Lantao Mei and Jiachen Li and Hanwen Xing and Tianqi Zhao and Fengyuan Yu and Weihang Xiao and Yizheng Jiao and Jianheng Hou and Danyang Zhang and Pengcheng Xu and Boyang Zhong and Zehong Zhao and Gaoyun Fang and John Kitaoka and Yile Xu and Hua Xu and Kenton Blacutt and Tin Nguyen and Siyuan Song and Haoran Sun and Shaoyue Wen and Linyang He and Runming Wang and Yanzhi Wang and Mengyue Yang and Ziqiao Ma and Raphaël Millière and Freda Shi and Nuno Vasconcelos and Daniel Khashabi and Alan Yuille and Yilun Du and Ziming Liu and Bo Li and Dahua Lin and Ziwei Liu and Vikash Kumar and Yijiang Li and Lei Yang and Zhongang Cai and Hokin Deng},
+  journal = {arXiv preprint arXiv:2602.20159},
+  year = {2026}
+}
+```
 
 ## Introduction
 
