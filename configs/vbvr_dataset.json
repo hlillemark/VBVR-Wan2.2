@@ -1,0 +1,402 @@
+{
+    "G-11_handle_object_reappearance_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-11_handle_object_reappearance_data-generator.json"
+    },
+    "G-12_grid_obtaining_award_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-12_grid_obtaining_award_data-generator.json"
+    },
+    "G-131_select_next_figure_increasing_size_sequence_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-131_select_next_figure_increasing_size_sequence_data-generator.json"
+    },
+    "G-132_find_fragment_for_gap_filling_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-132_find_fragment_for_gap_filling_data-generator.json"
+    },
+    "G-133_select_next_figure_decreasing_size_sequence_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-133_select_next_figure_decreasing_size_sequence_data-generator.json"
+    },
+    "G-134_select_next_figure_large_small_alternating_sequence_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-134_select_next_figure_large_small_alternating_sequence_data-generator.json"
+    },
+    "G-137_identify_figure_in_overlapping_area_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-137_identify_figure_in_overlapping_area_data-generator.json"
+    },
+    "G-138_spot_unique_non_repeated_color_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-138_spot_unique_non_repeated_color_data-generator.json"
+    },
+    "G-13_grid_number_sequence_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-13_grid_number_sequence_data-generator.json"
+    },
+    "G-141_identify_polygon_with_most_sides_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-141_identify_polygon_with_most_sides_data-generator.json"
+    },
+    "G-143_select_box_with_most_dots_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-143_select_box_with_most_dots_data-generator.json"
+    },
+    "G-146_circle_all_squares_from_mixed_shapes_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-146_circle_all_squares_from_mixed_shapes_data-generator.json"
+    },
+    "G-14_grid_color_sequence_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-14_grid_color_sequence_data-generator.json"
+    },
+    "G-158_identify_all_hollow_points_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-158_identify_all_hollow_points_data-generator.json"
+    },
+    "G-15_grid_avoid_obstacles_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-15_grid_avoid_obstacles_data-generator.json"
+    },
+    "G-162_locate_twelve_o_clock_arrows_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-162_locate_twelve_o_clock_arrows_data-generator.json"
+    },
+    "G-163_identify_one_and_nine_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-163_identify_one_and_nine_data-generator.json"
+    },
+    "G-165_mark_tangent_point_after_motion_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-165_mark_tangent_point_after_motion_data-generator.json"
+    },
+    "G-166_highlight_horizontal_lines_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-166_highlight_horizontal_lines_data-generator.json"
+    },
+    "G-16_grid_go_through_block_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-16_grid_go_through_block_data-generator.json"
+    },
+    "G-17_grid_avoid_red_block_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-17_grid_avoid_red_block_data-generator.json"
+    },
+    "G-18_grid_shortest_path_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-18_grid_shortest_path_data-generator.json"
+    },
+    "G-194_construct_concentric_ring_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-194_construct_concentric_ring_data-generator.json"
+    },
+    "G-195_select_nearest_2_1_rectangle_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-195_select_nearest_2_1_rectangle_data-generator.json"
+    },
+    "G-198_mark_right_angled_triangles_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-198_mark_right_angled_triangles_data-generator.json"
+    },
+    "G-199_locate_line_intersections_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-199_locate_line_intersections_data-generator.json"
+    },
+    "G-19_sort_objects_by_rule_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-19_sort_objects_by_rule_data-generator.json"
+    },
+    "G-1_object_trajectory_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-1_object_trajectory_data-generator.json"
+    },
+    "G-200_circle_maximum_value_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-200_circle_maximum_value_data-generator.json"
+    },
+    "G-21_multiple_occlusions_vertical_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-21_multiple_occlusions_vertical_data-generator.json"
+    },
+    "G-22_attention_shift_same_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-22_attention_shift_same_data-generator.json"
+    },
+    "G-25_seperate_object_spinning_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-25_seperate_object_spinning_data-generator.json"
+    },
+    "G-26_maintain_object_identity_different_objects_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-26_maintain_object_identity_different_objects_data-generator.json"
+    },
+    "G-27_read_the_chart_data_semantic_comprehension_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-27_read_the_chart_data_semantic_comprehension_data-generator.json"
+    },
+    "G-29_chart_extreme_with_data_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-29_chart_extreme_with_data_data-generator.json"
+    },
+    "G-2_reorder_objects_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-2_reorder_objects_data-generator.json"
+    },
+    "G-30_chart_extreme_without_data_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-30_chart_extreme_without_data_data-generator.json"
+    },
+    "G-31_directed_graph_navigation_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-31_directed_graph_navigation_data-generator.json"
+    },
+    "G-32_undirected_graph_navigation_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-32_undirected_graph_navigation_data-generator.json"
+    },
+    "G-33_visual_jenga_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-33_visual_jenga_data-generator.json"
+    },
+    "G-34_object_packing_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-34_object_packing_data-generator.json"
+    },
+    "G-35_hit_target_after_bounce_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-35_hit_target_after_bounce_data-generator.json"
+    },
+    "G-36_multiple_occlusions_horizontal_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-36_multiple_occlusions_horizontal_data-generator.json"
+    },
+    "G-37_symmetry_random_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-37_symmetry_random_data-generator.json"
+    },
+    "G-38_symmetry_shape_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-38_symmetry_shape_data-generator.json"
+    },
+    "G-39_attention_shift_different_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-39_attention_shift_different_data-generator.json"
+    },
+    "G-3_stable_sort_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-3_stable_sort_data-generator.json"
+    },
+    "G-40_combined_objects_spinning_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-40_combined_objects_spinning_data-generator.json"
+    },
+    "G-41_grid_highest_cost_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-41_grid_highest_cost_data-generator.json"
+    },
+    "G-43_understand_scene_structure_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-43_understand_scene_structure_data-generator.json"
+    },
+    "G-44_bfs_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-44_bfs_data-generator.json"
+    },
+    "G-45_key_door_matching_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-45_key_door_matching_data-generator.json"
+    },
+    "G-46_find_keys_and_open_doors_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-46_find_keys_and_open_doors_data-generator.json"
+    },
+    "G-48_multiple_bounces_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-48_multiple_bounces_data-generator.json"
+    },
+    "G-49_complete_missing_contour_segments_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-49_complete_missing_contour_segments_data-generator.json"
+    },
+    "G-4_identify_objects_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-4_identify_objects_data-generator.json"
+    },
+    "G-50_suppress_spurious_edges_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-50_suppress_spurious_edges_data-generator.json"
+    },
+    "G-51_predict_next_color_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-51_predict_next_color_data-generator.json"
+    },
+    "G-5_multi_object_placement_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-5_multi_object_placement_data-generator.json"
+    },
+    "G-6_resize_object_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-6_resize_object_data-generator.json"
+    },
+    "G-7_return_to_correct_bin_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-7_return_to_correct_bin_data-generator.json"
+    },
+    "G-8_track_object_movement_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-8_track_object_movement_data-generator.json"
+    },
+    "G-9_identify_objects_in_region_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/G-9_identify_objects_in_region_data-generator.json"
+    },
+    "O-10_shape_outline_fill_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-10_shape_outline_fill_data-generator.json"
+    },
+    "O-12_shape_color_then_scale_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-12_shape_color_then_scale_data-generator.json"
+    },
+    "O-13_shape_outline_then_move_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-13_shape_outline_then_move_data-generator.json"
+    },
+    "O-14_shape_scale_then_outline_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-14_shape_scale_then_outline_data-generator.json"
+    },
+    "O-15_ball_bounces_given_time_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-15_ball_bounces_given_time_data-generator.json"
+    },
+    "O-16_color_addition_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-16_color_addition_data-generator.json"
+    },
+    "O-17_color_subtraction_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-17_color_subtraction_data-generator.json"
+    },
+    "O-18_glass_refraction_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-18_glass_refraction_data-generator.json"
+    },
+    "O-19_mirror_reflection_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-19_mirror_reflection_data-generator.json"
+    },
+    "O-1_color_mixing_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-1_color_mixing_data-generator.json"
+    },
+    "O-21_construction_blueprint_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-21_construction_blueprint_data-generator.json"
+    },
+    "O-23_domino_chain_branch_path_prediction_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-23_domino_chain_branch_path_prediction_data-generator.json"
+    },
+    "O-24_domino_chain_gap_analysis_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-24_domino_chain_gap_analysis_data-generator.json"
+    },
+    "O-25_LEGO_construction_assembly_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-25_LEGO_construction_assembly_data-generator.json"
+    },
+    "O-29_ballcolor_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-29_ballcolor_data-generator.json"
+    },
+    "O-30_bookshelf_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-30_bookshelf_data-generator.json"
+    },
+    "O-31_ball_eating_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-31_ball_eating_data-generator.json"
+    },
+    "O-32_rolling_ball_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-32_rolling_ball_data-generator.json"
+    },
+    "O-33_counting_object_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-33_counting_object_data-generator.json"
+    },
+    "O-34_dot_to_dot_task_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-34_dot_to_dot_task_data-generator.json"
+    },
+    "O-36_grid_shift_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-36_grid_shift_data-generator.json"
+    },
+    "O-37_light_sequence_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-37_light_sequence_data-generator.json"
+    },
+    "O-38_majority_color_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-38_majority_color_data-generator.json"
+    },
+    "O-3_symbol_reordering_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-3_symbol_reordering_data-generator.json"
+    },
+    "O-44_rotation_puzzle_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-44_rotation_puzzle_data-generator.json"
+    },
+    "O-45_sequence_completion_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-45_sequence_completion_data-generator.json"
+    },
+    "O-47_sliding_puzzle_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-47_sliding_puzzle_data-generator.json"
+    },
+    "O-4_symbol_substitution_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-4_symbol_substitution_data-generator.json"
+    },
+    "O-52_traffic_light_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-52_traffic_light_data-generator.json"
+    },
+    "O-53_clock_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-53_clock_data-generator.json"
+    },
+    "O-55_rotation_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-55_rotation_data-generator.json"
+    },
+    "O-66_animal_color_sorting_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-66_animal_color_sorting_data-generator.json"
+    },
+    "O-75_communicating_vessels_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-75_communicating_vessels_data-generator.json"
+    },
+    "O-7_shape_color_change_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-7_shape_color_change_data-generator.json"
+    },
+    "O-83_planar_warp_verification_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-83_planar_warp_verification_data-generator.json"
+    },
+    "O-87_fluid_diffusion_reasoning_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-87_fluid_diffusion_reasoning_data-generator.json"
+    },
+    "O-8_shape_rotation_data-generator": {
+        "root": "data/VBVR-Dataset",
+        "annotation": "configs/per_tasks/O-8_shape_rotation_data-generator.json"
+    }
+}
