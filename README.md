@@ -22,7 +22,13 @@
         <img alt="Leaderboard" src="https://img.shields.io/badge/%F0%9F%A4%97%20_VBVR_Bench-Leaderboard-ffc107?color=ffc107&logoColor=white" height="20" />
     </a>
     <a href="https://github.com/Video-Reason/VBVR-EvalKit" target="_blank">
-        <img alt="VBVR-Bench Code" src="https://img.shields.io/badge/VBVR_Bench-Code-100000?style=flat-square&logo=github&logoColor=white" height="20" />
+        <img alt="Code" src="https://img.shields.io/badge/Evaluation_code-VBVR_Bench-100000?style=flat-square&logo=github&logoColor=white" height="20" />
+    </a>
+    <a href="https://github.com/Video-Reason/VBVR-Wan2.2" target="_blank">
+        <img alt="Code" src="https://img.shields.io/badge/Training_code-VBVR_Wan2.2-100000?style=flat-square&logo=github&logoColor=white" height="20" />
+    </a>
+    <a href="https://github.com/Video-Reason/VBVR-DataFactory" target="_blank">
+        <img alt="Code" src="https://img.shields.io/badge/Data_code-VBVR_DataFactory-100000?style=flat-square&logo=github&logoColor=white" height="20" />
     </a>
     <a href="https://www.youtube.com/watch?v=Gs9TPZmzo-s" target="_blank">
         <img alt="Video" src="https://img.shields.io/badge/YouTube-Video-FF0000?logo=YouTube&logoColor=white" height="20" />
