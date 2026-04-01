@@ -42,7 +42,33 @@ cd VBVR
 pip install -e .
 ```
 
-### 2. Download Training Data (VBVR-Dataset)
+### 2. Download Base Models
+
+Before training, we recommand to download the base model weights first. This ensures all model files are available locally and avoids incomplete downloads during training.
+
+#### Wan2.2-I2V-A14B
+
+Download from [Hugging Face](https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B):
+
+```bash
+huggingface-cli download Wan-AI/Wan2.2-I2V-A14B --local-dir ./models/Wan-AI/Wan2.2-I2V-A14B
+```
+
+Or from ModelScope:
+
+```bash
+modelscope download Wan-AI/Wan2.2-I2V-A14B --local_dir ./models/Wan-AI/Wan2.2-I2V-A14B
+```
+
+#### LTX-2.3
+
+```bash
+modelscope download DiffSynth-Studio/LTX-2.3-Repackage --local-dir ./models/DiffSynth-Studio/LTX-2.3-Repackage
+```
+
+> **Note:** The training pipeline will attempt to download models automatically if they are not found locally. However, in multi-GPU distributed training, concurrent downloads can be unreliable — especially with `DIFFSYNTH_DOWNLOAD_SOURCE="huggingface"`, where `huggingface_hub` may silently return an incomplete local cache without raising an error. **We strongly recommend downloading all model files before starting training.**
+
+### 3. Download Training Data (VBVR-Dataset)
 
 Download the VBVR-Dataset from Hugging Face and extract it into the `data/` directory:
 
@@ -60,15 +86,18 @@ After downloading, the training data config file [`configs/vbvr_dataset.json`](c
 data/
 └── VBVR-Dataset/
     ├── G-11_handle_object_reappearance_data-generator/
-    │   ├── 00000/
-    │   │   ├── clip.mp4
-    │   │   └── ...
+    │   ├── {task_id}/
+    │   │   ├── first_frame.png       (required)
+    │   │   ├── final_frame.png       (optional)
+    │   │   ├── prompt.txt            (required)
+    │   │   ├── ground_truth.mp4      (optional)
+    │   │   └── metadata.json         (optional)
     │   └── ...
     ├── G-12_grid_obtaining_award_data-generator/
     └── ...
 ```
 
-### 3. Training
+### 4. Training
 
 #### Wan2.2-I2V-A14B
 
@@ -104,7 +133,7 @@ NUM_GPUS=4 NUM_NODES=2 MASTER_ADDR=<master_ip> bash scripts/LTX2.3-I2AV_vbvr_dat
 See [`scripts/LTX2.3-I2AV_vbvr_dataset.sh`](scripts/LTX2.3-I2AV_vbvr_dataset.sh) for all configurable parameters.
 
 
-### 3. Download Evaluation Data (VBVR-Bench)
+### 5. Download Evaluation Data (VBVR-Bench)
 
 Download the VBVR-Bench evaluation data from Hugging Face:
 
@@ -130,7 +159,7 @@ data/VBVR-Bench/
     └── ...
 ```
 
-### 5. Before Evaluation, Inference on VBVR-Bench data
+### 6. Before Evaluation, Inference on VBVR-Bench data
 
 #### Wan2.2-I2V-A14B Inference
 
@@ -162,11 +191,11 @@ python examples/ltx2/model_training/validate_lora/eval_vbvr_bench.py \
     --eval_root ./data/VBVR-Bench \
     --output_root ./outputs/eval/LTX2.3_base 
 ```
-### 6. Evaluation on VBVR-Bnech
+### 7. Evaluation on VBVR-Bench
 
 After generating videos, you can evaluateyour results on the [VBVR-Bench](https://github.com/Video-Reason/VBVR-EvalKit) following the instructions.
 
-### 7. Submit Results to Leaderboard
+### 8. Submit Results to Leaderboard
 
 After evaluation, you can submit your results to the [VBVR-Bench Leaderboard](https://huggingface.co/spaces/Video-Reason/VBVR-Bench-Leaderboard) following the instructions on the leaderboard page.
 
