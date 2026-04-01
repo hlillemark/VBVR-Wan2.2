@@ -105,6 +105,16 @@ class ModelConfig:
                 self.path = glob.glob(os.path.join(self.local_model_path, self.model_id, self.origin_file_pattern))
         if isinstance(self.path, list) and len(self.path) == 1:
             self.path = self.path[0]
+        # Validate that files were actually found
+        if isinstance(self.path, list) and len(self.path) == 0:
+            expected_dir = os.path.join(self.local_model_path, self.model_id)
+            raise FileNotFoundError(
+                f"No model files found matching pattern '{self.origin_file_pattern}' "
+                f"in '{expected_dir}'. This may be caused by an incomplete download "
+                f"(e.g. network interruption). Please download the model first:\n"
+                f"  huggingface-cli download {self.model_id} --local-dir {expected_dir}\n"
+                f"or set DIFFSYNTH_SKIP_DOWNLOAD=False and ensure network connectivity."
+            )
 
     def vram_config(self):
         return {
