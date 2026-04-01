@@ -64,6 +64,7 @@ echo "=================================="
 echo "[Step 1/2] Training High Noise Model LoRA (timestep: 0 ~ 0.358)"
 
 cd ${REPO_DIR} && \
+mkdir -p ${HIGH_NOISE_OUTPUT_PATH} && \
 export DIFFSYNTH_DOWNLOAD_SOURCE="huggingface" && \
 accelerate launch \
     --multi_gpu \
@@ -98,6 +99,7 @@ echo "[Step 1/2] High Noise Model training complete."
 echo "[Step 2/2] Training Low Noise Model LoRA (timestep: 0.358 ~ 1.0)"
 
 cd ${REPO_DIR} && \
+mkdir -p ${HIGH_NOISE_OUTPUT_PATH} && \
 export DIFFSYNTH_DOWNLOAD_SOURCE="huggingface" && \
 accelerate launch \
     --multi_gpu \
