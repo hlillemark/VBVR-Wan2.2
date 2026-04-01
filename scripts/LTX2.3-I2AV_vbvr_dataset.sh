@@ -63,6 +63,7 @@ echo "=================================="
 echo "[Stage 1/2] Data Processing (encoding text, images, audio with frozen models)"
 
 cd ${REPO_DIR} && \
+export DIFFSYNTH_DOWNLOAD_SOURCE="huggingface" && \
 accelerate launch \
     --multi_gpu \
     --num_processes ${NUM_PROCESSES} \
@@ -95,6 +96,7 @@ echo "[Stage 1/2] Data processing complete."
 echo "[Stage 2/2] Training DiT LoRA (using pre-processed data)"
 
 cd ${REPO_DIR} && \
+export DIFFSYNTH_DOWNLOAD_SOURCE="huggingface" && \
 accelerate launch \
     --multi_gpu \
     --num_processes ${NUM_PROCESSES} \
