@@ -43,8 +43,8 @@ This repository provides the training and inference code for the **VBVR** (A Ver
 ### 1. Installation
 
 ```bash
-git clone https://github.com/Video-Reason/VBVR.git
-cd VBVR
+git clone https://github.com/Video-Reason/VBVR-Wan2.2.git
+cd VBVR-Wan2.2
 pip install -e .
 ```
 
