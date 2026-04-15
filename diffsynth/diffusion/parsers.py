@@ -6,6 +6,9 @@ def add_dataset_base_config(parser: argparse.ArgumentParser):
     parser.add_argument("--dataset_metadata_path", type=str, default=None, help="Path to the metadata file of the dataset. Not required when using --dataset_config_path.")
     parser.add_argument("--dataset_repeat", type=int, default=1, help="Number of times to repeat the dataset per epoch.")
     parser.add_argument("--dataset_num_workers", type=int, default=0, help="Number of workers for data loading.")
+    parser.add_argument("--dataloader_prefetch_factor", type=int, default=2, help="Number of batches prefetched by each worker.")
+    parser.add_argument("--dataloader_pin_memory", default=True, action="store_true", help="Pin host memory in the dataloader.")
+    parser.add_argument("--dataloader_persistent_workers", default=True, action="store_true", help="Keep dataloader workers alive across epochs.")
     parser.add_argument("--data_file_keys", type=str, default="image,video", help="Data file keys in the metadata. Comma-separated.")
     return parser
 
@@ -33,6 +36,11 @@ def add_model_config(parser: argparse.ArgumentParser):
 def add_training_config(parser: argparse.ArgumentParser):
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate.")
     parser.add_argument("--num_epochs", type=int, default=1, help="Number of epochs.")
+    parser.add_argument("--max_steps", type=int, default=None, help="Optional maximum number of optimizer steps. Training stops when either --max_steps or --num_epochs is reached first.")
+    parser.add_argument("--batch_size", type=int, default=1, help="Training batch size per process.")
+    parser.add_argument("--training_seed", type=int, default=42, help="Default random seed for deterministic training and resume.")
+    parser.add_argument("--dataloader_seed", type=int, default=None, help="Optional seed override for deterministic dataloader ordering. Defaults to --training_seed.")
+    parser.add_argument("--disable_deterministic_dataloader", dest="deterministic_dataloader", default=False, action="store_false", help="Disable deterministic dataloader ordering for debugging.")
     parser.add_argument("--trainable_models", type=str, default=None, help="Models to train, e.g., dit, vae, text_encoder.")
     parser.add_argument("--find_unused_parameters", default=False, action="store_true", help="Whether to find unused parameters in DDP.")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay.")
@@ -43,6 +51,9 @@ def add_output_config(parser: argparse.ArgumentParser):
     parser.add_argument("--output_path", type=str, default="./models", help="Output save path.")
     parser.add_argument("--remove_prefix_in_ckpt", type=str, default="pipe.dit.", help="Remove prefix in ckpt.")
     parser.add_argument("--save_steps", type=int, default=None, help="Number of checkpoint saving invervals. If None, checkpoints will be saved every epoch.")
+    parser.add_argument("--forced_save_steps", type=str, default=None, help="Comma-separated list of exact global steps that should always trigger a checkpoint save.")
+    parser.add_argument("--resume_from_training_state", type=str, default=None, help="Optional path to a saved training state sidecar. If omitted, the runner auto-resumes from <output_path>/latest-training-state.pt when present.")
+    parser.add_argument("--no_resume_training_state", default=False, action="store_true", help="Start from scratch even if a training state sidecar exists in the output directory.")
     return parser
 
 def add_lora_config(parser: argparse.ArgumentParser):

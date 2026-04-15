@@ -1,0 +1,1 @@
+from .vbvr_bench import TrainingVBVREvalHook, Wan22TI2V5BVBVRBenchRunner

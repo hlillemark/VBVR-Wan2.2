@@ -85,6 +85,47 @@ class DiffusionTrainingModule(torch.nn.Module):
                 state_dict_[name] = param
             state_dict = state_dict_
         return state_dict
+
+
+    def load_trainable_state_dict(self, state_dict, remove_prefix=None, strict=True):
+        trainable_param_names = self.trainable_param_names()
+        expected_key_map = {}
+        for name in trainable_param_names:
+            exported_name = name
+            if remove_prefix is not None and exported_name.startswith(remove_prefix):
+                exported_name = exported_name[len(remove_prefix):]
+            expected_key_map[exported_name] = name
+
+        remapped_state_dict = {}
+        unexpected_keys = []
+        for name, param in state_dict.items():
+            target_name = expected_key_map.get(name)
+            if target_name is None:
+                unexpected_keys.append(name)
+                continue
+            remapped_state_dict[target_name] = param
+
+        missing_keys = [full_name for exported_name, full_name in expected_key_map.items() if exported_name not in state_dict]
+        load_result = self.load_state_dict(remapped_state_dict, strict=False)
+        missing_keys.extend(
+            key for key in load_result.missing_keys
+            if key in trainable_param_names
+        )
+        unexpected_keys.extend(
+            key for key in load_result.unexpected_keys
+            if key in trainable_param_names
+        )
+        missing_keys = sorted(set(missing_keys))
+        unexpected_keys = sorted(set(unexpected_keys))
+
+        if strict and (missing_keys or unexpected_keys):
+            error_messages = []
+            if missing_keys:
+                error_messages.append(f"Missing trainable keys: {missing_keys}")
+            if unexpected_keys:
+                error_messages.append(f"Unexpected trainable keys: {unexpected_keys}")
+            raise RuntimeError("; ".join(error_messages))
+        return missing_keys, unexpected_keys
     
     
     def transfer_data_to_device(self, data, device, torch_float_dtype=None):

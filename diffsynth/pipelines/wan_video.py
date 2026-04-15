@@ -376,16 +376,21 @@ class WanVideoUnit_ShapeChecker(PipelineUnit):
 class WanVideoUnit_NoiseInitializer(PipelineUnit):
     def __init__(self):
         super().__init__(
-            input_params=("height", "width", "num_frames", "seed", "rand_device", "vace_reference_image"),
+            input_params=("height", "width", "num_frames", "seed", "rand_device", "vace_reference_image", "input_video", "input_image"),
             output_params=("noise",)
         )
 
-    def process(self, pipe: WanVideoPipeline, height, width, num_frames, seed, rand_device, vace_reference_image):
+    def process(self, pipe: WanVideoPipeline, height, width, num_frames, seed, rand_device, vace_reference_image, input_video, input_image):
         length = (num_frames - 1) // 4 + 1
+        batch_size = 1
+        if isinstance(input_video, list) and len(input_video) > 0 and isinstance(input_video[0], list):
+            batch_size = len(input_video)
+        elif isinstance(input_image, list):
+            batch_size = len(input_image)
         if vace_reference_image is not None:
             f = len(vace_reference_image) if isinstance(vace_reference_image, list) else 1
             length += f
-        shape = (1, pipe.vae.model.z_dim, length, height // pipe.vae.upsampling_factor, width // pipe.vae.upsampling_factor)
+        shape = (batch_size, pipe.vae.model.z_dim, length, height // pipe.vae.upsampling_factor, width // pipe.vae.upsampling_factor)
         noise = pipe.generate_noise(shape, seed=seed, rand_device=rand_device)
         if vace_reference_image is not None:
             noise = torch.concat((noise[:, :, -f:], noise[:, :, :-f]), dim=2)
@@ -463,10 +468,18 @@ class WanVideoUnit_ImageEmbedderCLIP(PipelineUnit):
         if input_image is None or pipe.image_encoder is None or not pipe.dit.require_clip_embedding:
             return {}
         pipe.load_models_to_device(self.onload_model_names)
-        image = pipe.preprocess_image(input_image.resize((width, height))).to(pipe.device)
+        if isinstance(input_image, list):
+            input_image = [image.resize((width, height)) for image in input_image]
+        else:
+            input_image = input_image.resize((width, height))
+        image = pipe.preprocess_image(input_image).to(pipe.device)
         clip_context = pipe.image_encoder.encode_image([image])
         if end_image is not None:
-            end_image = pipe.preprocess_image(end_image.resize((width, height))).to(pipe.device)
+            if isinstance(end_image, list):
+                end_image = [image.resize((width, height)) for image in end_image]
+            else:
+                end_image = end_image.resize((width, height))
+            end_image = pipe.preprocess_image(end_image).to(pipe.device)
             if pipe.dit.has_image_pos_emb:
                 clip_context = torch.concat([clip_context, pipe.image_encoder.encode_image([end_image])], dim=1)
         clip_context = clip_context.to(dtype=pipe.torch_dtype, device=pipe.device)
@@ -524,8 +537,12 @@ class WanVideoUnit_ImageEmbedderFused(PipelineUnit):
         if input_image is None or not pipe.dit.fuse_vae_embedding_in_latents:
             return {}
         pipe.load_models_to_device(self.onload_model_names)
-        image = pipe.preprocess_image(input_image.resize((width, height))).transpose(0, 1)
-        z = pipe.vae.encode([image], device=pipe.device, tiled=tiled, tile_size=tile_size, tile_stride=tile_stride)
+        if isinstance(input_image, list):
+            input_image = [image.resize((width, height)) for image in input_image]
+        else:
+            input_image = input_image.resize((width, height))
+        image = pipe.preprocess_image(input_image).unsqueeze(2)
+        z = pipe.vae.encode(image.to(dtype=pipe.torch_dtype, device=pipe.device), device=pipe.device, tiled=tiled, tile_size=tile_size, tile_stride=tile_stride)
         latents[:, :, 0: 1] = z
         return {"latents": latents, "fuse_vae_embedding_in_latents": True, "first_frame_latents": z}
 

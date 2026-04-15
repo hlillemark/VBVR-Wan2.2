@@ -181,6 +181,7 @@ if __name__ == "__main__":
         args.output_path,
         remove_prefix_in_ckpt=args.remove_prefix_in_ckpt,
         state_dict_converter=convert_lora_format if args.align_to_opensource_format else lambda x:x,
+        forced_save_steps=args.forced_save_steps,
     )
     launcher_map = {
         "sft:data_process": launch_data_process_task,

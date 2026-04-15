@@ -54,7 +54,7 @@ class ModelConfig:
                 elif os.environ.get('DIFFSYNTH_SKIP_DOWNLOAD').lower() == "false":
                     return False
             else:
-                return False
+                return True
         else:
             return self.skip_download
 

@@ -133,6 +133,7 @@ if __name__ == "__main__":
     model_logger = ModelLogger(
         args.output_path,
         remove_prefix_in_ckpt=args.remove_prefix_in_ckpt,
+        forced_save_steps=args.forced_save_steps,
     )
     launcher_map = {
         "sft:data_process": launch_data_process_task,
