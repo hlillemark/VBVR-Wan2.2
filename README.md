@@ -166,10 +166,12 @@ accelerate launch \
     --finetuning_mode flow \
     --use_gradient_checkpointing \
     --eval_bench_root ./data/VBVR-Bench \
+    --evalkit_path ../VBVR-EvalKit \
     --eval_steps 5000 \
     --eval_num_videos 8 \
     --eval_videos_per_task 1 \
-    --eval_splits In-Domain_50
+    --eval_splits In-Domain_50 \
+    --eval_run_numeric
 ```
 
 Equilibrium forcing finetuning:
@@ -205,18 +207,20 @@ accelerate launch \
     --finetuning_mode eqf \
     --use_gradient_checkpointing \
     --eval_bench_root ./data/VBVR-Bench \
+    --evalkit_path ../VBVR-EvalKit \
     --eval_steps 5000 \
     --eval_num_videos 8 \
     --eval_videos_per_task 1 \
     --eval_splits In-Domain_50 \
-    --eval_inference_schedule c_function
+    --eval_inference_schedule c_function \
+    --eval_run_numeric
 ```
 
 In `--model_paths`, the three `.safetensors` files are the Wan DiT checkpoint shards, followed by the T5 text encoder checkpoint and the VAE checkpoint.
 
 `--use_gradient_checkpointing` is optional, but it is recommended when memory is tight. Namely on H100 we need it, but on H200 we don't.
 
-The `--eval_*` arguments are optional. They enable periodic VBVR-Bench inference during training, saving generated videos under `./outputs/Wan2.2-TI2V-5B_<mode>_vbvr/vbvr_eval/step-*`. For EqF runs, use `c_function` for periodic benchmark evaluation.
+The `--eval_*` arguments are optional. They enable periodic VBVR-Bench inference during training, saving generated videos under `./outputs/Wan2.2-TI2V-5B_<mode>_vbvr/vbvr_eval/step-*`. Add `--eval_run_numeric` together with `--evalkit_path` to also run VBVR-EvalKit and log quantitative metrics at each eval step. For EqF runs, use `c_function` for periodic benchmark evaluation.
 
 #### LTX-2.3 I2AV
 
