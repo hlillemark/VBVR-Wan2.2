@@ -105,14 +105,24 @@ def resolve_finetuning_mode(training_state, fallback="flow"):
     )
 
 
-def resolve_sample_in_epoch(training_state):
+def resolve_global_sample_in_epoch(training_state, fallback_num_replicas=1):
+    """Return the number of global samples consumed in the current epoch.
+
+    Preferentially reads ``global_sample_in_epoch`` from the saved training
+    state. For older states that only stored per-rank cursors, the value is
+    reconstructed from ``batch_in_epoch``/``sample_in_epoch`` using the saved
+    ``num_replicas`` when available, or ``fallback_num_replicas`` otherwise.
+    """
     if training_state is None:
         return 0
-    if "sample_in_epoch" in training_state:
-        return int(training_state.get("sample_in_epoch", 0))
-    batch_in_epoch = int(training_state.get("batch_in_epoch", 0))
+    if "global_sample_in_epoch" in training_state:
+        return int(training_state.get("global_sample_in_epoch", 0))
+    saved_num_replicas = int(training_state.get("num_replicas", fallback_num_replicas))
     batch_size = int(training_state.get("batch_size", 1))
-    return batch_in_epoch * batch_size
+    if "sample_in_epoch" in training_state:
+        return int(training_state.get("sample_in_epoch", 0)) * saved_num_replicas
+    batch_in_epoch = int(training_state.get("batch_in_epoch", 0))
+    return batch_in_epoch * batch_size * saved_num_replicas
 
 
 class DeterministicDistributedSampler(torch.utils.data.Sampler):
@@ -123,22 +133,18 @@ class DeterministicDistributedSampler(torch.utils.data.Sampler):
         rank=0,
         seed=1234,
         epoch=0,
-        start_batch=0,
         batch_size=1,
-        start_sample=None,
+        start_sample_global=0,
     ):
         self.dataset = dataset
         self.num_replicas = num_replicas
         self.rank = rank
         self.seed = seed
         self.epoch = epoch
-        self.start_batch = start_batch
         self.batch_size = batch_size
         self.num_samples = int(math.ceil(len(self.dataset) / float(self.num_replicas)))
         self.total_size = self.num_samples * self.num_replicas
-        if start_sample is None:
-            start_sample = start_batch * batch_size
-        self.start_sample = min(int(start_sample), self.num_samples)
+        self.start_sample_global = max(0, min(int(start_sample_global), self.total_size))
 
     def _ordered_indices(self):
         generator = torch.Generator()
@@ -147,9 +153,14 @@ class DeterministicDistributedSampler(torch.utils.data.Sampler):
         padding_size = self.total_size - len(indices)
         if padding_size > 0:
             indices += indices[:padding_size]
-        indices = indices[self.rank:self.total_size:self.num_replicas]
-        start_index = min(self.start_sample, len(indices))
-        return indices[start_index:]
+        if self.start_sample_global > 0:
+            indices = indices[self.start_sample_global:]
+        # Trim so every rank receives the same number of samples, which keeps
+        # DDP collectives in sync even after a mid-epoch global skip.
+        trimmed_length = (len(indices) // self.num_replicas) * self.num_replicas
+        indices = indices[:trimmed_length]
+        indices = indices[self.rank::self.num_replicas]
+        return indices
 
     def __iter__(self):
         return iter(self._ordered_indices())
@@ -243,36 +254,61 @@ def launch_training_task(
 
     initialize_deepspeed_gradient_checkpointing(accelerator)
 
+    num_replicas = max(1, int(getattr(accelerator, "num_processes", 1)))
+    gradient_accumulation_steps = max(1, int(getattr(accelerator, "gradient_accumulation_steps", 1)))
+
     next_epoch = 0
-    next_batch_in_epoch = 0
-    next_sample_in_epoch = 0
+    next_global_sample_in_epoch = 0
     if resume_state is not None:
         next_epoch = int(resume_state.get("epoch", 0))
-        next_batch_in_epoch = int(resume_state.get("batch_in_epoch", 0))
-        next_sample_in_epoch = resolve_sample_in_epoch(resume_state)
+        next_global_sample_in_epoch = resolve_global_sample_in_epoch(
+            resume_state, fallback_num_replicas=num_replicas
+        )
+        saved_num_replicas = resume_state.get("num_replicas")
+        if (
+            saved_num_replicas is not None
+            and int(saved_num_replicas) != num_replicas
+            and accelerator.is_main_process
+        ):
+            print(
+                f"[runner] Resuming with num_replicas={num_replicas} (was {int(saved_num_replicas)}). "
+                "Global sample cursor will be preserved across the device-count change."
+            )
+        saved_grad_accum = resume_state.get("gradient_accumulation_steps")
+        if (
+            saved_grad_accum is not None
+            and int(saved_grad_accum) != gradient_accumulation_steps
+            and accelerator.is_main_process
+        ):
+            print(
+                f"[runner] Resuming with gradient_accumulation_steps={gradient_accumulation_steps} "
+                f"(was {int(saved_grad_accum)}). Optimizer step count continues from the saved value."
+            )
 
     training_progress = {
         "epoch": next_epoch,
-        "batch_in_epoch": next_batch_in_epoch,
-        "sample_in_epoch": next_sample_in_epoch,
+        "global_sample_in_epoch": next_global_sample_in_epoch,
         "training_seed": training_seed,
         "dataloader_seed": dataloader_seed,
         "deterministic_dataloader": deterministic_dataloader,
         "batch_size": batch_size,
+        "num_replicas": num_replicas,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
         "num_epochs": num_epochs,
         "max_steps": max_steps,
     }
 
     def build_training_state():
         return {
-            "format_version": 2,
+            "format_version": 3,
             "epoch": training_progress["epoch"],
-            "batch_in_epoch": training_progress["batch_in_epoch"],
-            "sample_in_epoch": training_progress["sample_in_epoch"],
+            "global_sample_in_epoch": training_progress["global_sample_in_epoch"],
             "training_seed": training_progress["training_seed"],
             "dataloader_seed": training_progress["dataloader_seed"],
             "deterministic_dataloader": training_progress["deterministic_dataloader"],
             "batch_size": training_progress["batch_size"],
+            "num_replicas": training_progress["num_replicas"],
+            "gradient_accumulation_steps": training_progress["gradient_accumulation_steps"],
             "num_epochs": training_progress["num_epochs"],
             "max_steps": training_progress["max_steps"],
             "optimizer": optimizer.state_dict(),
@@ -290,18 +326,16 @@ def launch_training_task(
     for epoch_id in range(next_epoch, num_epochs):
         if reached_max_steps:
             break
-        batch_start = next_batch_in_epoch if epoch_id == next_epoch else 0
-        sample_start = next_sample_in_epoch if epoch_id == next_epoch else 0
+        sample_start_global = next_global_sample_in_epoch if epoch_id == next_epoch else 0
         if deterministic_dataloader:
             sampler = DeterministicDistributedSampler(
                 dataset,
-                num_replicas=accelerator.num_processes,
+                num_replicas=num_replicas,
                 rank=accelerator.process_index,
                 seed=dataloader_seed,
                 epoch=epoch_id,
-                start_batch=batch_start,
                 batch_size=batch_size,
-                start_sample=sample_start,
+                start_sample_global=sample_start_global,
             )
             dataloader = torch.utils.data.DataLoader(
                 dataset,
@@ -311,6 +345,9 @@ def launch_training_task(
                 collate_fn=collate_data,
                 **dataloader_kwargs,
             )
+            total_samples_this_epoch = sampler.total_size
+        else:
+            total_samples_this_epoch = None
         batches_this_epoch = len(dataloader)
         progress_bar = tqdm(dataloader, disable=not accelerator.is_local_main_process)
         for batch_offset, data in enumerate(progress_bar):
@@ -327,28 +364,31 @@ def launch_training_task(
                 optimizer.step()
                 scheduler.step()
                 last_loss = loss.detach()
-                next_epoch_after_step = epoch_id
-                next_batch_after_step = batch_start + batch_offset + 1
-                next_sample_after_step = sample_start + (batch_offset + 1) * batch_size
-                if deterministic_dataloader:
-                    next_sample_after_step = min(next_sample_after_step, sampler.num_samples)
-                if batch_offset + 1 >= batches_this_epoch:
-                    next_epoch_after_step = epoch_id + 1
-                    next_batch_after_step = 0
-                    next_sample_after_step = 0
-                training_progress["epoch"] = next_epoch_after_step
-                training_progress["batch_in_epoch"] = next_batch_after_step
-                training_progress["sample_in_epoch"] = next_sample_after_step
-                model_logger.on_step_end(
-                    accelerator,
-                    model,
-                    save_steps,
-                    loss=loss,
-                    training_state_fn=build_training_state,
-                )
-                if max_steps is not None and model_logger.num_steps >= max_steps:
-                    reached_max_steps = True
-                    break
+                if accelerator.sync_gradients:
+                    samples_consumed_this_epoch = (
+                        sample_start_global + (batch_offset + 1) * batch_size * num_replicas
+                    )
+                    if total_samples_this_epoch is not None:
+                        samples_consumed_this_epoch = min(
+                            samples_consumed_this_epoch, total_samples_this_epoch
+                        )
+                    is_last_batch_of_epoch = batch_offset + 1 >= batches_this_epoch
+                    if is_last_batch_of_epoch:
+                        training_progress["epoch"] = epoch_id + 1
+                        training_progress["global_sample_in_epoch"] = 0
+                    else:
+                        training_progress["epoch"] = epoch_id
+                        training_progress["global_sample_in_epoch"] = samples_consumed_this_epoch
+                    model_logger.on_step_end(
+                        accelerator,
+                        model,
+                        save_steps,
+                        loss=loss,
+                        training_state_fn=build_training_state,
+                    )
+                    if max_steps is not None and model_logger.num_steps >= max_steps:
+                        reached_max_steps = True
+                        break
         if reached_max_steps:
             break
         if save_steps is None:
@@ -359,8 +399,7 @@ def launch_training_task(
                 loss=last_loss,
                 training_state_fn=build_training_state,
             )
-        next_batch_in_epoch = 0
-        next_sample_in_epoch = 0
+        next_global_sample_in_epoch = 0
     model_logger.on_training_end(
         accelerator,
         model,

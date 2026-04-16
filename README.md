@@ -211,7 +211,7 @@ accelerate launch \
     --finetuning_mode eqf \
     --eval_bench_root ./data/VBVR-Bench \
     --evalkit_path ../VBVR-EvalKit \
-    --eval_steps 2500 \
+    --eval_steps 10 \
     --eval_num_videos 8 \
     --eval_videos_per_task 1 \
     --eval_splits In-Domain_50 \
@@ -227,6 +227,8 @@ In `--model_paths`, the three `.safetensors` files are the Wan DiT checkpoint sh
 The `--eval_*` arguments are optional. They enable periodic VBVR-Bench inference during training, saving generated videos under `./outputs/Wan2.2-TI2V-5B_<mode>_vbvr/vbvr_eval/step-*`. Add `--eval_run_numeric` together with `--evalkit_path` to also run VBVR-EvalKit and log quantitative metrics at each eval step. For EqF runs, use `c_function` for periodic benchmark evaluation.
 
 Deterministic dataloader ordering is enabled by default. We recommend keeping `--training_seed` and `--dataloader_seed` explicit in long-running or resumable jobs so the intended ordering is obvious in your launch command.
+
+`--save_steps`, `--eval_steps`, `--max_steps`, and `--forced_save_steps` are all counted in **optimizer (gradient) steps**, not dataloader forward passes. With `--gradient_accumulation_steps 4`, one optimizer step corresponds to four forward passes. Training progress is tracked with a **global sample cursor**, so resuming from `latest-training-state.pt` continues from the exact same dataset position even if you change `--batch_size`, `--gradient_accumulation_steps`, or `--num_processes` between runs (as long as the seeds are the same).
 
 #### LTX-2.3 I2AV
 

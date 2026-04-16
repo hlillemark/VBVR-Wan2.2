@@ -50,8 +50,8 @@ def add_training_config(parser: argparse.ArgumentParser):
 def add_output_config(parser: argparse.ArgumentParser):
     parser.add_argument("--output_path", type=str, default="./models", help="Output save path.")
     parser.add_argument("--remove_prefix_in_ckpt", type=str, default="pipe.dit.", help="Remove prefix in ckpt.")
-    parser.add_argument("--save_steps", type=int, default=None, help="Number of checkpoint saving invervals. If None, checkpoints will be saved every epoch.")
-    parser.add_argument("--forced_save_steps", type=str, default=None, help="Comma-separated list of exact global steps that should always trigger a checkpoint save.")
+    parser.add_argument("--save_steps", type=int, default=None, help="Save a checkpoint every N optimizer (gradient) steps. If None, checkpoints will be saved every epoch.")
+    parser.add_argument("--forced_save_steps", type=str, default=None, help="Comma-separated list of exact optimizer step numbers that should always trigger a checkpoint save.")
     parser.add_argument("--resume_from_training_state", type=str, default=None, help="Optional path to a saved training state sidecar. If omitted, the runner auto-resumes from <output_path>/latest-training-state.pt when present.")
     parser.add_argument("--no_resume_training_state", default=False, action="store_true", help="Start from scratch even if a training state sidecar exists in the output directory.")
     return parser
