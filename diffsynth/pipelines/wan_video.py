@@ -29,6 +29,21 @@ from ..models.wav2vec import WanS2VAudioEncoder
 from ..models.longcat_video_dit import LongCatVideoTransformer3DModel
 
 
+def normalize_finetuning_mode(finetuning_mode):
+    if finetuning_mode is None:
+        return "flow"
+    finetuning_mode = str(finetuning_mode)
+    if finetuning_mode not in {"flow", "eqf"}:
+        raise ValueError(f"Unsupported finetuning_mode: {finetuning_mode}")
+    return finetuning_mode
+
+
+def maybe_zero_timestep_conditioning(timestep: torch.Tensor, finetuning_mode):
+    if normalize_finetuning_mode(finetuning_mode) != "eqf":
+        return timestep
+    return torch.zeros_like(timestep)
+
+
 class WanVideoPipeline(BasePipeline):
 
     def __init__(self, device=get_device_type(), torch_dtype=torch.bfloat16):
@@ -37,6 +52,7 @@ class WanVideoPipeline(BasePipeline):
             height_division_factor=16, width_division_factor=16, time_division_factor=4, time_division_remainder=1
         )
         self.scheduler = FlowMatchScheduler("Wan")
+        self.finetuning_mode = "flow"
         self.tokenizer: HuggingfaceTokenizer = None
         self.audio_processor: Wav2Vec2Processor = None
         self.text_encoder: WanTextEncoder = None
@@ -272,6 +288,7 @@ class WanVideoPipeline(BasePipeline):
         # progress_bar
         progress_bar_cmd=tqdm,
         output_type: Optional[Literal["quantized", "floatpoint"]] = "quantized",
+        finetuning_mode: Optional[Literal["flow", "eqf"]] = None,
     ):
         # Scheduler
         self.scheduler.set_timesteps(
@@ -318,6 +335,9 @@ class WanVideoPipeline(BasePipeline):
             "wantodance_music_path": wantodance_music_path, "wantodance_reference_image": wantodance_reference_image, "wantodance_fps": wantodance_fps,
             "wantodance_keyframes": wantodance_keyframes, "wantodance_keyframes_mask": wantodance_keyframes_mask,
             "framewise_decoding": framewise_decoding,
+            "finetuning_mode": normalize_finetuning_mode(
+                self.finetuning_mode if finetuning_mode is None else finetuning_mode
+            ),
         }
         for unit in self.units:
             inputs_shared, inputs_posi, inputs_nega = self.unit_runner(unit, self, inputs_shared, inputs_posi, inputs_nega)
@@ -1349,6 +1369,7 @@ def model_fn_wan_video(
     wantodance_fps: float = 30.0,
     music_feature = None,
     skip_9th_layer: bool = False,
+    finetuning_mode: str = "flow",
     **kwargs,
 ):
     if sliding_window_size is not None and sliding_window_stride is not None:
@@ -1409,6 +1430,9 @@ def model_fn_wan_video(
         from xfuser.core.distributed import (get_sequence_parallel_rank,
                                             get_sequence_parallel_world_size,
                                             get_sp_group)
+
+    finetuning_mode = normalize_finetuning_mode(finetuning_mode)
+    timestep = maybe_zero_timestep_conditioning(timestep, finetuning_mode)
 
     # Timestep
     if dit.seperated_timestep and fuse_vae_embedding_in_latents:

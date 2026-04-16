@@ -49,6 +49,13 @@ def parse_args():
         help="Comma-separated benchmark splits to generate.",
     )
     parser.add_argument(
+        "--finetuning-mode",
+        type=str,
+        default="auto",
+        choices=["auto", "flow", "eqf"],
+        help="Checkpoint conditioning mode. 'auto' reads the training metadata sidecar when available.",
+    )
+    parser.add_argument(
         "--num-inference-steps",
         type=int,
         default=50,
@@ -57,9 +64,9 @@ def parse_args():
     parser.add_argument(
         "--inference-schedule",
         type=str,
-        default="sigma_shift",
-        choices=["linear", "sigma_shift", "sd3", "c_function"],
-        help="Inference schedule family used to map solver noise levels to model timesteps.",
+        default="auto",
+        choices=["auto", "linear", "sigma_shift", "sd3", "c_function"],
+        help="Inference schedule family used to map solver noise levels to model timesteps. 'auto' uses the checkpoint's recommended mode-specific default.",
     )
     parser.add_argument(
         "--sigma-shift",
@@ -234,6 +241,7 @@ def init_wandb(args):
             "task_names": parse_csv_list(args.task_names),
             "max_videos": args.max_videos,
             "videos_per_task": args.videos_per_task,
+            "finetuning_mode": args.finetuning_mode,
             "num_inference_steps": args.num_inference_steps,
             "inference_schedule": args.inference_schedule,
             "sigma_shift": args.sigma_shift,
@@ -287,6 +295,7 @@ def main():
         seed=args.seed,
         sample_seed=args.sample_seed,
         num_inference_steps=args.num_inference_steps,
+        finetuning_mode=args.finetuning_mode,
         sigma_shift=args.sigma_shift,
         inference_schedule=args.inference_schedule,
         schedule_sd3_r=args.schedule_sd3_r,

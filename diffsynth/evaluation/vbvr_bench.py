@@ -11,7 +11,7 @@ import torch
 from PIL import Image, ImageOps
 
 from diffsynth.core import load_state_dict
-from diffsynth.pipelines.wan_video import ModelConfig, WanVideoPipeline
+from diffsynth.pipelines.wan_video import ModelConfig, WanVideoPipeline, normalize_finetuning_mode
 from diffsynth.utils.data import VideoData, save_video
 
 
@@ -24,6 +24,7 @@ NEGATIVE_PROMPT = (
 
 DEFAULT_SPLITS = ("In-Domain_50", "Out-of-Domain_50")
 LANCZOS_RESAMPLE = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+CHECKPOINT_METADATA_SUFFIX = ".metadata.json"
 
 
 @dataclass
@@ -44,6 +45,94 @@ def parse_csv_list(value):
     if isinstance(value, (list, tuple)):
         return [item for item in value if item]
     return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def default_inference_config_for_mode(finetuning_mode):
+    finetuning_mode = normalize_finetuning_mode(finetuning_mode)
+    if finetuning_mode == "eqf":
+        return {
+            "inference_schedule": "c_function",
+            "sigma_shift": 5.0,
+            "schedule_sd3_r": 6.0,
+            "schedule_c_interp": 0.8,
+            "schedule_c_start": 1.0,
+            "schedule_c_t_end": 0.999,
+            "schedule_c_grid_size": 4096,
+        }
+    return {
+        "inference_schedule": "sigma_shift",
+        "sigma_shift": 5.0,
+        "schedule_sd3_r": 6.0,
+        "schedule_c_interp": 0.8,
+        "schedule_c_start": 1.0,
+        "schedule_c_t_end": 0.999,
+        "schedule_c_grid_size": 4096,
+    }
+
+
+def checkpoint_metadata_path(checkpoint_path):
+    checkpoint_path = Path(checkpoint_path)
+    candidate_paths = [checkpoint_path]
+    try:
+        candidate_paths.append(checkpoint_path.resolve(strict=True))
+    except FileNotFoundError:
+        pass
+    for candidate in candidate_paths:
+        metadata_path = candidate.with_name(f"{candidate.name}{CHECKPOINT_METADATA_SUFFIX}")
+        if metadata_path.is_file():
+            return metadata_path
+    return checkpoint_path.with_name(f"{checkpoint_path.name}{CHECKPOINT_METADATA_SUFFIX}")
+
+
+def load_checkpoint_metadata(checkpoint_path):
+    if checkpoint_path is None:
+        return None
+    metadata_path = checkpoint_metadata_path(checkpoint_path)
+    if not metadata_path.is_file():
+        return None
+    return json.loads(metadata_path.read_text())
+
+
+def resolve_finetuning_mode(checkpoint_path=None, finetuning_mode="auto"):
+    if finetuning_mode != "auto":
+        return normalize_finetuning_mode(finetuning_mode)
+    metadata = load_checkpoint_metadata(checkpoint_path)
+    if metadata is not None:
+        return normalize_finetuning_mode(metadata.get("finetuning_mode", "flow"))
+    return "flow"
+
+
+def resolve_inference_config(
+    checkpoint_path,
+    finetuning_mode,
+    inference_schedule="auto",
+    sigma_shift=5.0,
+    schedule_sd3_r=6.0,
+    schedule_c_interp=0.8,
+    schedule_c_start=1.0,
+    schedule_c_t_end=0.999,
+    schedule_c_grid_size=4096,
+):
+    config = {
+        "inference_schedule": inference_schedule,
+        "sigma_shift": sigma_shift,
+        "schedule_sd3_r": schedule_sd3_r,
+        "schedule_c_interp": schedule_c_interp,
+        "schedule_c_start": schedule_c_start,
+        "schedule_c_t_end": schedule_c_t_end,
+        "schedule_c_grid_size": schedule_c_grid_size,
+    }
+    if inference_schedule == "auto":
+        metadata = load_checkpoint_metadata(checkpoint_path)
+        if metadata is not None:
+            config["inference_schedule"] = metadata.get(
+                "recommended_inference_schedule",
+                default_inference_config_for_mode(finetuning_mode)["inference_schedule"],
+            )
+            config.update(metadata.get("recommended_inference_kwargs", {}))
+        else:
+            config.update(default_inference_config_for_mode(finetuning_mode))
+    return config
 
 
 def adjust_num_frames(
@@ -308,14 +397,16 @@ class Wan22TI2V5BVBVRBenchRunner:
         )
         return self.pipe
 
-    def apply_checkpoint(self, checkpoint_path=None, checkpoint_state_dict=None):
+    def apply_checkpoint(self, checkpoint_path=None, checkpoint_state_dict=None, finetuning_mode="auto"):
         pipe = self.build_pipeline()
+        resolved_finetuning_mode = resolve_finetuning_mode(checkpoint_path=checkpoint_path, finetuning_mode=finetuning_mode)
+        pipe.finetuning_mode = resolved_finetuning_mode
         if checkpoint_path is None and checkpoint_state_dict is None:
-            return pipe
+            return pipe, resolved_finetuning_mode
         if checkpoint_state_dict is None:
             checkpoint_state_dict = load_state_dict(str(checkpoint_path))
         pipe.dit.load_state_dict(checkpoint_state_dict, strict=True)
-        return pipe
+        return pipe, resolved_finetuning_mode
 
     @staticmethod
     def _sort_manifest_record(record):
@@ -390,15 +481,31 @@ class Wan22TI2V5BVBVRBenchRunner:
         num_processes=1,
         num_inference_steps=50,
         sigma_shift=5.0,
-        inference_schedule="sigma_shift",
+        inference_schedule="auto",
         schedule_sd3_r=6.0,
         schedule_c_interp=0.8,
         schedule_c_start=1.0,
         schedule_c_t_end=0.999,
         schedule_c_grid_size=4096,
+        finetuning_mode="auto",
     ):
         self.validate_paths()
-        pipe = self.apply_checkpoint(checkpoint_path=checkpoint_path, checkpoint_state_dict=checkpoint_state_dict)
+        pipe, resolved_finetuning_mode = self.apply_checkpoint(
+            checkpoint_path=checkpoint_path,
+            checkpoint_state_dict=checkpoint_state_dict,
+            finetuning_mode=finetuning_mode,
+        )
+        inference_config = resolve_inference_config(
+            checkpoint_path,
+            resolved_finetuning_mode,
+            inference_schedule=inference_schedule,
+            sigma_shift=sigma_shift,
+            schedule_sd3_r=schedule_sd3_r,
+            schedule_c_interp=schedule_c_interp,
+            schedule_c_start=schedule_c_start,
+            schedule_c_t_end=schedule_c_t_end,
+            schedule_c_grid_size=schedule_c_grid_size,
+        )
         output_root = Path(output_root)
         output_root.mkdir(parents=True, exist_ok=True)
         comparison_root = None
@@ -460,13 +567,14 @@ class Wan22TI2V5BVBVRBenchRunner:
                 input_image=input_image,
                 num_frames=num_frames,
                 num_inference_steps=num_inference_steps,
-                sigma_shift=sigma_shift,
-                inference_schedule=inference_schedule,
-                schedule_sd3_r=schedule_sd3_r,
-                schedule_c_interp=schedule_c_interp,
-                schedule_c_start=schedule_c_start,
-                schedule_c_t_end=schedule_c_t_end,
-                schedule_c_grid_size=schedule_c_grid_size,
+                sigma_shift=inference_config["sigma_shift"],
+                inference_schedule=inference_config["inference_schedule"],
+                schedule_sd3_r=inference_config["schedule_sd3_r"],
+                schedule_c_interp=inference_config["schedule_c_interp"],
+                schedule_c_start=inference_config["schedule_c_start"],
+                schedule_c_t_end=inference_config["schedule_c_t_end"],
+                schedule_c_grid_size=inference_config["schedule_c_grid_size"],
+                finetuning_mode=resolved_finetuning_mode,
                 seed=sample_seed_value,
                 tiled=True,
                 height=input_image.height,
@@ -491,8 +599,9 @@ class Wan22TI2V5BVBVRBenchRunner:
                 "seed": sample_seed_value,
                 "generation_seconds": generation_seconds,
                 "num_inference_steps": num_inference_steps,
-                "sigma_shift": sigma_shift,
-                "inference_schedule": inference_schedule,
+                "sigma_shift": inference_config["sigma_shift"],
+                "inference_schedule": inference_config["inference_schedule"],
+                "finetuning_mode": resolved_finetuning_mode,
                 "process_index": process_index,
             }
             manifest.append(record)
@@ -582,6 +691,14 @@ class TrainingVBVREvalHook:
         fps=16,
         seed=1,
         sample_seed=1234,
+        finetuning_mode="flow",
+        inference_schedule="auto",
+        sigma_shift=5.0,
+        schedule_sd3_r=6.0,
+        schedule_c_interp=0.8,
+        schedule_c_start=1.0,
+        schedule_c_t_end=0.999,
+        schedule_c_grid_size=4096,
     ):
         self.model_dir = Path(model_dir)
         self.bench_root = Path(bench_root)
@@ -598,6 +715,14 @@ class TrainingVBVREvalHook:
         self.fps = fps
         self.seed = seed
         self.sample_seed = sample_seed
+        self.finetuning_mode = finetuning_mode
+        self.inference_schedule = inference_schedule
+        self.sigma_shift = sigma_shift
+        self.schedule_sd3_r = schedule_sd3_r
+        self.schedule_c_interp = schedule_c_interp
+        self.schedule_c_start = schedule_c_start
+        self.schedule_c_t_end = schedule_c_t_end
+        self.schedule_c_grid_size = schedule_c_grid_size
         self.runner = None
 
     def should_run(self, step):
@@ -648,6 +773,14 @@ class TrainingVBVREvalHook:
             wandb_prefix="vbvr_eval",
             process_index=accelerator.process_index,
             num_processes=accelerator.num_processes,
+            finetuning_mode=self.finetuning_mode,
+            inference_schedule=self.inference_schedule,
+            sigma_shift=self.sigma_shift,
+            schedule_sd3_r=self.schedule_sd3_r,
+            schedule_c_interp=self.schedule_c_interp,
+            schedule_c_start=self.schedule_c_start,
+            schedule_c_t_end=self.schedule_c_t_end,
+            schedule_c_grid_size=self.schedule_c_grid_size,
         )
 
         accelerator.wait_for_everyone()

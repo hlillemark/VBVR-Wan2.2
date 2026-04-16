@@ -93,6 +93,18 @@ def load_training_state(training_state_path):
         return torch.load(training_state_path, map_location="cpu")
 
 
+def resolve_finetuning_mode(training_state, fallback="flow"):
+    if training_state is None:
+        return fallback
+    logger_state = training_state.get("logger", {})
+    return str(
+        training_state.get(
+            "finetuning_mode",
+            logger_state.get("finetuning_mode", fallback),
+        )
+    )
+
+
 class DeterministicDistributedSampler(torch.utils.data.Sampler):
     def __init__(
         self,
@@ -200,6 +212,16 @@ def launch_training_task(
         optimizer.load_state_dict(resume_state["optimizer"])
         scheduler.load_state_dict(resume_state["scheduler"])
         model_logger.load_state_dict(resume_state.get("logger", {}))
+        resume_finetuning_mode = resolve_finetuning_mode(resume_state, fallback=model_logger.finetuning_mode)
+        model_finetuning_mode = getattr(model, "finetuning_mode", resume_finetuning_mode)
+        if model_finetuning_mode != resume_finetuning_mode:
+            raise ValueError(
+                f"Resume finetuning_mode mismatch: checkpoint uses '{resume_finetuning_mode}' "
+                f"but current run requested '{model_finetuning_mode}'."
+            )
+        if hasattr(model, "set_finetuning_mode"):
+            model.set_finetuning_mode(resume_finetuning_mode)
+        model_logger.finetuning_mode = resume_finetuning_mode
         restore_rng_state(resume_state.get("rng"))
 
     initialize_deepspeed_gradient_checkpointing(accelerator)
@@ -223,7 +245,7 @@ def launch_training_task(
 
     def build_training_state():
         return {
-            "format_version": 1,
+            "format_version": 2,
             "epoch": training_progress["epoch"],
             "batch_in_epoch": training_progress["batch_in_epoch"],
             "training_seed": training_progress["training_seed"],
@@ -237,6 +259,9 @@ def launch_training_task(
             "logger": model_logger.state_dict(),
             "rng": capture_rng_state(),
             "remove_prefix_in_ckpt": model_logger.remove_prefix_in_ckpt,
+            "finetuning_mode": model_logger.finetuning_mode,
+            "recommended_inference_schedule": model_logger.recommended_inference_schedule,
+            "recommended_inference_kwargs": dict(model_logger.recommended_inference_kwargs),
         }
 
     last_loss = None

@@ -126,7 +126,14 @@ See [`scripts/Wan2.2-I2V-14B_vbvr_dataset.sh`](scripts/Wan2.2-I2V-14B_vbvr_datas
 
 #### Wan2.2-TI2V-5B
 
-For Wan2.2-TI2V-5B full fine-tuning, you can launch training directly with `accelerate`:
+Wan2.2-TI2V-5B now supports two full-finetuning modes:
+
+- `flow`: standard flow-matching finetuning with the usual timestep conditioning.
+- `eqf`: equilibrium forcing finetuning, which keeps the same noisy latents and loss target but passes a zeroed timestep tensor into the model during both training and inference.
+
+EqF checkpoints are saved separately from flow checkpoints, carry mode metadata, and benchmark inference auto-detects the mode by default when you pass `--dit-checkpoint`.
+
+Flow-matching finetuning:
 
 ```bash
 export REPO_DIR=$(pwd)
@@ -152,23 +159,64 @@ accelerate launch \
     --learning_rate 1e-5 \
     --num_epochs 1 \
     --save_steps 5000 \
-    --output_path ./outputs/Wan2.2-TI2V-5B_full_vbvr \
+    --output_path ./outputs/Wan2.2-TI2V-5B_flow_vbvr \
     --remove_prefix_in_ckpt pipe.dit. \
     --trainable_models dit \
     --extra_inputs input_image \
+    --finetuning_mode flow \
     --use_gradient_checkpointing \
     --eval_bench_root ./data/VBVR-Bench \
     --eval_steps 5000 \
-    --eval_num_videos 2 \
+    --eval_num_videos 8 \
     --eval_videos_per_task 1 \
     --eval_splits In-Domain_50
 ```
 
+Equilibrium forcing finetuning:
+
+```bash
+export REPO_DIR=$(pwd)
+export PYTHONPATH="${REPO_DIR}:${PYTHONPATH:-}"
+
+accelerate launch \
+    --num_processes 2 \
+    --main_process_port 29500 \
+    examples/wanvideo/model_training/train.py \
+    --dataset_config_path ./configs/vbvr_dataset.json \
+    --height 384 \
+    --width 384 \
+    --num_frames 209 \
+    --batch_size 1 \
+    --gradient_accumulation_steps 1 \
+    --dataset_num_workers 4 \
+    --dataloader_prefetch_factor 2 \
+    --dataloader_pin_memory \
+    --dataloader_persistent_workers \
+    --dataset_repeat 1 \
+    --data_file_keys clip_path \
+    --model_paths "[ [ \"./models/Wan-AI/Wan2.2-TI2V-5B/diffusion_pytorch_model-00001-of-00003.safetensors\", \"./models/Wan-AI/Wan2.2-TI2V-5B/diffusion_pytorch_model-00002-of-00003.safetensors\", \"./models/Wan-AI/Wan2.2-TI2V-5B/diffusion_pytorch_model-00003-of-00003.safetensors\" ], \"./models/Wan-AI/Wan2.2-TI2V-5B/models_t5_umt5-xxl-enc-bf16.pth\", \"./models/Wan-AI/Wan2.2-TI2V-5B/Wan2.2_VAE.pth\" ]" \
+    --learning_rate 1e-5 \
+    --num_epochs 1 \
+    --save_steps 5000 \
+    --output_path ./outputs/Wan2.2-TI2V-5B_eqf_vbvr \
+    --remove_prefix_in_ckpt pipe.dit. \
+    --trainable_models dit \
+    --extra_inputs input_image \
+    --finetuning_mode eqf \
+    --use_gradient_checkpointing \
+    --eval_bench_root ./data/VBVR-Bench \
+    --eval_steps 5000 \
+    --eval_num_videos 8 \
+    --eval_videos_per_task 1 \
+    --eval_splits In-Domain_50 \
+    --eval_inference_schedule c_function
+```
+
 In `--model_paths`, the three `.safetensors` files are the Wan DiT checkpoint shards, followed by the T5 text encoder checkpoint and the VAE checkpoint.
 
-`--use_gradient_checkpointing` is optional, but it is recommended when memory is tight. Namely on H100 we need it, but on H200 we don't. 
+`--use_gradient_checkpointing` is optional, but it is recommended when memory is tight. Namely on H100 we need it, but on H200 we don't.
 
-The `--eval_*` arguments are optional. They enable periodic VBVR-Bench inference during training, saving generated videos under `./outputs/Wan2.2-TI2V-5B_full_vbvr/vbvr_eval/step-*`.
+The `--eval_*` arguments are optional. They enable periodic VBVR-Bench inference during training, saving generated videos under `./outputs/Wan2.2-TI2V-5B_<mode>_vbvr/vbvr_eval/step-*`. For EqF runs, use `c_function` for periodic benchmark evaluation.
 
 #### LTX-2.3 I2AV
 

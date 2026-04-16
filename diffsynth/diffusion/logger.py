@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import torch
@@ -18,6 +19,7 @@ def _to_cpu_state(value):
 
 class ModelLogger:
     ALIAS_FILE_NAMES = {"latest.safetensors", "best.safetensors"}
+    CHECKPOINT_METADATA_SUFFIX = ".metadata.json"
 
     def __init__(
         self,
@@ -26,12 +28,18 @@ class ModelLogger:
         state_dict_converter=lambda x: x,
         evaluation_callback=None,
         forced_save_steps=None,
+        finetuning_mode="flow",
+        recommended_inference_schedule="sigma_shift",
+        recommended_inference_kwargs=None,
     ):
         self.output_path = output_path
         self.remove_prefix_in_ckpt = remove_prefix_in_ckpt
         self.state_dict_converter = state_dict_converter
         self.evaluation_callback = evaluation_callback
         self.forced_save_steps = self.parse_step_set(forced_save_steps)
+        self.finetuning_mode = str(finetuning_mode)
+        self.recommended_inference_schedule = str(recommended_inference_schedule)
+        self.recommended_inference_kwargs = dict(recommended_inference_kwargs or {})
         self.num_steps = 0
         self.last_archive_step = None
         self.best_loss = None
@@ -81,7 +89,22 @@ class ModelLogger:
 
     def _checkpoint_file_name(self, loss, forced=False):
         force_suffix = "-force" if forced else ""
-        return f"step-{self.num_steps:08d}-loss-{self._format_loss_for_file(loss)}{force_suffix}.safetensors"
+        return f"{self.finetuning_mode}-step-{self.num_steps:08d}-loss-{self._format_loss_for_file(loss)}{force_suffix}.safetensors"
+
+    def _checkpoint_metadata_file_name(self, checkpoint_file_name):
+        return f"{checkpoint_file_name}{self.CHECKPOINT_METADATA_SUFFIX}"
+
+    def _checkpoint_metadata_path(self, checkpoint_file_name):
+        return os.path.join(self.output_path, self._checkpoint_metadata_file_name(checkpoint_file_name))
+
+    def _checkpoint_metadata_payload(self, checkpoint_file_name):
+        return {
+            "format_version": 1,
+            "model_file_name": checkpoint_file_name,
+            "finetuning_mode": self.finetuning_mode,
+            "recommended_inference_schedule": self.recommended_inference_schedule,
+            "recommended_inference_kwargs": dict(self.recommended_inference_kwargs),
+        }
 
     def _latest_training_state_path(self):
         return os.path.join(self.output_path, "latest-training-state.pt")
@@ -94,6 +117,9 @@ class ModelLogger:
             "latest_checkpoint_file": self.latest_checkpoint_file,
             "best_checkpoint_file": self.best_checkpoint_file,
             "force_checkpoint_files": sorted(self.force_checkpoint_files),
+            "finetuning_mode": self.finetuning_mode,
+            "recommended_inference_schedule": self.recommended_inference_schedule,
+            "recommended_inference_kwargs": dict(self.recommended_inference_kwargs),
         }
 
     def load_state_dict(self, state_dict):
@@ -105,6 +131,13 @@ class ModelLogger:
         self.latest_checkpoint_file = state_dict.get("latest_checkpoint_file", self.latest_checkpoint_file)
         self.best_checkpoint_file = state_dict.get("best_checkpoint_file", self.best_checkpoint_file)
         self.force_checkpoint_files = set(state_dict.get("force_checkpoint_files", self.force_checkpoint_files))
+        self.finetuning_mode = str(state_dict.get("finetuning_mode", self.finetuning_mode))
+        self.recommended_inference_schedule = str(
+            state_dict.get("recommended_inference_schedule", self.recommended_inference_schedule)
+        )
+        self.recommended_inference_kwargs = dict(
+            state_dict.get("recommended_inference_kwargs", self.recommended_inference_kwargs)
+        )
         legacy_best_metric = state_dict.get("best_metric")
         if self.best_loss is None and isinstance(legacy_best_metric, dict):
             legacy_loss = legacy_best_metric.get("value")
@@ -147,6 +180,16 @@ class ModelLogger:
         torch.save(training_state_payload, temp_path)
         os.replace(temp_path, target_path)
 
+    def _save_checkpoint_metadata(self, checkpoint_file_name):
+        metadata_payload = self._checkpoint_metadata_payload(checkpoint_file_name)
+        target_path = self._checkpoint_metadata_path(checkpoint_file_name)
+        temp_path = f"{target_path}.tmp"
+        if os.path.lexists(temp_path):
+            os.remove(temp_path)
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(metadata_payload, handle, indent=2)
+        os.replace(temp_path, target_path)
+
     def _update_symlink(self, alias_name, target_file_name):
         alias_path = os.path.join(self.output_path, alias_name)
         if target_file_name is None:
@@ -163,6 +206,12 @@ class ModelLogger:
 
     def _is_checkpoint_file(self, file_name):
         return file_name.endswith(".safetensors") and file_name not in self.ALIAS_FILE_NAMES
+
+    def _is_checkpoint_metadata_file(self, file_name):
+        if not file_name.endswith(self.CHECKPOINT_METADATA_SUFFIX):
+            return False
+        checkpoint_file_name = file_name[:-len(self.CHECKPOINT_METADATA_SUFFIX)]
+        return self._is_checkpoint_file(checkpoint_file_name)
 
     def _is_forced_checkpoint_file(self, file_name):
         return self._is_checkpoint_file(file_name) and "-force.safetensors" in file_name
@@ -185,6 +234,13 @@ class ModelLogger:
             if file_name in self.ALIAS_FILE_NAMES or file_name == "latest-training-state.pt":
                 continue
             if file_name.endswith("-training-state.pt"):
+                if os.path.lexists(file_path):
+                    os.remove(file_path)
+                continue
+            if self._is_checkpoint_metadata_file(file_name):
+                checkpoint_file_name = file_name[:-len(self.CHECKPOINT_METADATA_SUFFIX)]
+                if checkpoint_file_name in kept_checkpoint_files:
+                    continue
                 if os.path.lexists(file_path):
                     os.remove(file_path)
                 continue
@@ -238,6 +294,7 @@ class ModelLogger:
 
         checkpoint_path = os.path.join(self.output_path, checkpoint_file_name)
         accelerator.save(exported_state_dict, checkpoint_path, safe_serialization=True)
+        self._save_checkpoint_metadata(checkpoint_file_name)
 
         self._update_symlink("latest.safetensors", self.latest_checkpoint_file)
         self._update_symlink("best.safetensors", self.best_checkpoint_file)
