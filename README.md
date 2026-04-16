@@ -189,7 +189,7 @@ accelerate launch \
     --width 384 \
     --num_frames 209 \
     --batch_size 1 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 4 \
     --dataset_num_workers 4 \
     --dataloader_prefetch_factor 2 \
     --dataloader_pin_memory \
@@ -199,21 +199,21 @@ accelerate launch \
     --model_paths "[ [ \"./models/Wan-AI/Wan2.2-TI2V-5B/diffusion_pytorch_model-00001-of-00003.safetensors\", \"./models/Wan-AI/Wan2.2-TI2V-5B/diffusion_pytorch_model-00002-of-00003.safetensors\", \"./models/Wan-AI/Wan2.2-TI2V-5B/diffusion_pytorch_model-00003-of-00003.safetensors\" ], \"./models/Wan-AI/Wan2.2-TI2V-5B/models_t5_umt5-xxl-enc-bf16.pth\", \"./models/Wan-AI/Wan2.2-TI2V-5B/Wan2.2_VAE.pth\" ]" \
     --learning_rate 1e-5 \
     --num_epochs 1 \
-    --save_steps 5000 \
+    --save_steps 2500 \
     --output_path ./outputs/Wan2.2-TI2V-5B_eqf_vbvr \
     --remove_prefix_in_ckpt pipe.dit. \
     --trainable_models dit \
     --extra_inputs input_image \
     --finetuning_mode eqf \
-    --use_gradient_checkpointing \
     --eval_bench_root ./data/VBVR-Bench \
     --evalkit_path ../VBVR-EvalKit \
-    --eval_steps 5000 \
+    --eval_steps 2500 \
     --eval_num_videos 8 \
     --eval_videos_per_task 1 \
     --eval_splits In-Domain_50 \
     --eval_inference_schedule c_function \
-    --eval_run_numeric
+    --eval_run_numeric \
+    --use_gradient_checkpointing
 ```
 
 In `--model_paths`, the three `.safetensors` files are the Wan DiT checkpoint shards, followed by the T5 text encoder checkpoint and the VAE checkpoint.

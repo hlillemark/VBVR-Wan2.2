@@ -105,6 +105,16 @@ def resolve_finetuning_mode(training_state, fallback="flow"):
     )
 
 
+def resolve_sample_in_epoch(training_state):
+    if training_state is None:
+        return 0
+    if "sample_in_epoch" in training_state:
+        return int(training_state.get("sample_in_epoch", 0))
+    batch_in_epoch = int(training_state.get("batch_in_epoch", 0))
+    batch_size = int(training_state.get("batch_size", 1))
+    return batch_in_epoch * batch_size
+
+
 class DeterministicDistributedSampler(torch.utils.data.Sampler):
     def __init__(
         self,
@@ -115,6 +125,7 @@ class DeterministicDistributedSampler(torch.utils.data.Sampler):
         epoch=0,
         start_batch=0,
         batch_size=1,
+        start_sample=None,
     ):
         self.dataset = dataset
         self.num_replicas = num_replicas
@@ -125,6 +136,9 @@ class DeterministicDistributedSampler(torch.utils.data.Sampler):
         self.batch_size = batch_size
         self.num_samples = int(math.ceil(len(self.dataset) / float(self.num_replicas)))
         self.total_size = self.num_samples * self.num_replicas
+        if start_sample is None:
+            start_sample = start_batch * batch_size
+        self.start_sample = min(int(start_sample), self.num_samples)
 
     def _ordered_indices(self):
         generator = torch.Generator()
@@ -134,7 +148,7 @@ class DeterministicDistributedSampler(torch.utils.data.Sampler):
         if padding_size > 0:
             indices += indices[:padding_size]
         indices = indices[self.rank:self.total_size:self.num_replicas]
-        start_index = min(self.start_batch * self.batch_size, len(indices))
+        start_index = min(self.start_sample, len(indices))
         return indices[start_index:]
 
     def __iter__(self):
@@ -228,13 +242,16 @@ def launch_training_task(
 
     next_epoch = 0
     next_batch_in_epoch = 0
+    next_sample_in_epoch = 0
     if resume_state is not None:
         next_epoch = int(resume_state.get("epoch", 0))
         next_batch_in_epoch = int(resume_state.get("batch_in_epoch", 0))
+        next_sample_in_epoch = resolve_sample_in_epoch(resume_state)
 
     training_progress = {
         "epoch": next_epoch,
         "batch_in_epoch": next_batch_in_epoch,
+        "sample_in_epoch": next_sample_in_epoch,
         "training_seed": training_seed,
         "dataloader_seed": dataloader_seed,
         "deterministic_dataloader": deterministic_dataloader,
@@ -248,6 +265,7 @@ def launch_training_task(
             "format_version": 2,
             "epoch": training_progress["epoch"],
             "batch_in_epoch": training_progress["batch_in_epoch"],
+            "sample_in_epoch": training_progress["sample_in_epoch"],
             "training_seed": training_progress["training_seed"],
             "dataloader_seed": training_progress["dataloader_seed"],
             "deterministic_dataloader": training_progress["deterministic_dataloader"],
@@ -270,6 +288,7 @@ def launch_training_task(
         if reached_max_steps:
             break
         batch_start = next_batch_in_epoch if epoch_id == next_epoch else 0
+        sample_start = next_sample_in_epoch if epoch_id == next_epoch else 0
         if deterministic_dataloader:
             sampler = DeterministicDistributedSampler(
                 dataset,
@@ -279,6 +298,7 @@ def launch_training_task(
                 epoch=epoch_id,
                 start_batch=batch_start,
                 batch_size=batch_size,
+                start_sample=sample_start,
             )
             dataloader = torch.utils.data.DataLoader(
                 dataset,
@@ -306,11 +326,16 @@ def launch_training_task(
                 last_loss = loss.detach()
                 next_epoch_after_step = epoch_id
                 next_batch_after_step = batch_start + batch_offset + 1
+                next_sample_after_step = sample_start + (batch_offset + 1) * batch_size
+                if deterministic_dataloader:
+                    next_sample_after_step = min(next_sample_after_step, sampler.num_samples)
                 if batch_offset + 1 >= batches_this_epoch:
                     next_epoch_after_step = epoch_id + 1
                     next_batch_after_step = 0
+                    next_sample_after_step = 0
                 training_progress["epoch"] = next_epoch_after_step
                 training_progress["batch_in_epoch"] = next_batch_after_step
+                training_progress["sample_in_epoch"] = next_sample_after_step
                 model_logger.on_step_end(
                     accelerator,
                     model,
@@ -332,6 +357,7 @@ def launch_training_task(
                 training_state_fn=build_training_state,
             )
         next_batch_in_epoch = 0
+        next_sample_in_epoch = 0
     model_logger.on_training_end(
         accelerator,
         model,
