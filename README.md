@@ -124,6 +124,52 @@ NUM_GPUS=4 NUM_NODES=2 MASTER_ADDR=<master_ip> bash scripts/Wan2.2-I2V-14B_vbvr_
 
 See [`scripts/Wan2.2-I2V-14B_vbvr_dataset.sh`](scripts/Wan2.2-I2V-14B_vbvr_dataset.sh) for all configurable parameters.
 
+#### Wan2.2-TI2V-5B
+
+For Wan2.2-TI2V-5B full fine-tuning, you can launch training directly with `accelerate`:
+
+```bash
+export REPO_DIR=$(pwd)
+export PYTHONPATH="${REPO_DIR}:${PYTHONPATH:-}"
+
+accelerate launch \
+    --num_processes 2 \
+    --main_process_port 29500 \
+    examples/wanvideo/model_training/train.py \
+    --dataset_config_path ./configs/vbvr_dataset.json \
+    --height 384 \
+    --width 384 \
+    --num_frames 209 \
+    --batch_size 1 \
+    --gradient_accumulation_steps 1 \
+    --dataset_num_workers 4 \
+    --dataloader_prefetch_factor 2 \
+    --dataloader_pin_memory \
+    --dataloader_persistent_workers \
+    --dataset_repeat 1 \
+    --data_file_keys clip_path \
+    --model_paths "[ [ \"./models/Wan-AI/Wan2.2-TI2V-5B/diffusion_pytorch_model-00001-of-00003.safetensors\", \"./models/Wan-AI/Wan2.2-TI2V-5B/diffusion_pytorch_model-00002-of-00003.safetensors\", \"./models/Wan-AI/Wan2.2-TI2V-5B/diffusion_pytorch_model-00003-of-00003.safetensors\" ], \"./models/Wan-AI/Wan2.2-TI2V-5B/models_t5_umt5-xxl-enc-bf16.pth\", \"./models/Wan-AI/Wan2.2-TI2V-5B/Wan2.2_VAE.pth\" ]" \
+    --learning_rate 1e-5 \
+    --num_epochs 1 \
+    --save_steps 5000 \
+    --output_path ./outputs/Wan2.2-TI2V-5B_full_vbvr \
+    --remove_prefix_in_ckpt pipe.dit. \
+    --trainable_models dit \
+    --extra_inputs input_image \
+    --use_gradient_checkpointing \
+    --eval_bench_root ./data/VBVR-Bench \
+    --eval_steps 5000 \
+    --eval_num_videos 2 \
+    --eval_videos_per_task 1 \
+    --eval_splits In-Domain_50
+```
+
+In `--model_paths`, the three `.safetensors` files are the Wan DiT checkpoint shards, followed by the T5 text encoder checkpoint and the VAE checkpoint.
+
+`--use_gradient_checkpointing` is optional, but it is recommended when memory is tight. Namely on H100 we need it, but on H200 we don't. 
+
+The `--eval_*` arguments are optional. They enable periodic VBVR-Bench inference during training, saving generated videos under `./outputs/Wan2.2-TI2V-5B_full_vbvr/vbvr_eval/step-*`.
+
 #### LTX-2.3 I2AV
 
 LTX-2.3 training uses a two-stage approach: data processing (encoding) followed by LoRA training:
@@ -166,6 +212,48 @@ data/VBVR-Bench/
 ```
 
 ### 6. Before Evaluation, Inference on VBVR-Bench data
+
+#### Wan2.2-TI2V-5B Stable Inference
+
+The Wan flow-matching path in this repo uses the latent convention `z_sigma = (1 - sigma) * x0 + sigma * eps`, predicts the velocity target `eps - x0`, and advances samples with an Euler step `z_next = z + v_hat * delta_sigma`. The new inference schedule options change how solver noise levels are mapped to model timesteps and how much sigma distance is taken per solver step, while leaving that base convention unchanged.
+
+The benchmark runner now supports four schedule modes:
+
+- `linear`: evenly spaced sigma schedule without a warp
+- `sigma_shift`: the legacy Wan schedule, controlled by `--sigma-shift`
+- `sd3`: EqF-style SD3 warp, controlled by `--schedule-sd3-r`
+- `c_function`: EqF-style c-function warp, controlled by `--schedule-c-*`
+
+```bash
+PYTHONPATH=$(pwd):${PYTHONPATH:-} DIFFSYNTH_SKIP_DOWNLOAD=True accelerate launch --num_processes 1 \
+    ./scripts/run_wan22_ti2v5b_vbvr_bench.py \
+    --bench-root ./data/VBVR-Bench \
+    --model-dir ./models/Wan-AI/Wan2.2-TI2V-5B \
+    --output-root ./outputs/wan22_ti2v5b_vbvr_bench_sd3 \
+    --splits In-Domain_50 \
+    --max-videos 2 \
+    --videos-per-task 1 \
+    --num-inference-steps 50 \
+    --inference-schedule sd3 \
+    --schedule-sd3-r 6.0 \
+    --target-num-frames 209 \
+    --fps 16 \
+    --seed 1 \
+    --sample-seed 1234 \
+    --overwrite \
+    --no-run-evalkit
+```
+
+You can generate the schedule comparison figure from the same implementation used at inference time with:
+
+```bash
+PYTHONPATH=$(pwd):${PYTHONPATH:-} python ./scripts/plot_wan_inference_schedules.py \
+    --output-path ./docs/assets/wan_inference_schedules.png
+```
+
+The generated figure is tracked at `docs/assets/wan_inference_schedules.png`:
+
+![Wan inference schedule comparison](docs/assets/wan_inference_schedules.png)
 
 #### Wan2.2-I2V-A14B Inference
 

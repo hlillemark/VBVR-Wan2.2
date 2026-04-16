@@ -26,6 +26,17 @@ pipe = WanVideoPipeline.from_pretrained(
     vram_limit=torch.cuda.mem_get_info("cuda")[1] / (1024 ** 3) - 2,
 )
 
+schedule_kwargs = {
+    "num_inference_steps": 50,
+    "inference_schedule": "sigma_shift",
+    "sigma_shift": 5.0,
+    "schedule_sd3_r": 6.0,
+    "schedule_c_interp": 0.8,
+    "schedule_c_start": 1.0,
+    "schedule_c_t_end": 0.999,
+    "schedule_c_grid_size": 4096,
+}
+
 # Text-to-video
 video = pipe(
     prompt="两只可爱的橘猫戴上拳击手套，站在一个拳击台上搏斗。",
@@ -33,6 +44,7 @@ video = pipe(
     seed=0, tiled=True,
     height=704, width=1248,
     num_frames=121,
+    **schedule_kwargs,
 )
 save_video(video, "video_1_Wan2.2-TI2V-5B.mp4", fps=15, quality=5)
 
@@ -50,5 +62,6 @@ video = pipe(
     height=704, width=1248,
     input_image=input_image,
     num_frames=121,
+    **schedule_kwargs,
 )
 save_video(video, "video_2_Wan2.2-TI2V-5B.mp4", fps=15, quality=5)

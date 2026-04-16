@@ -62,6 +62,14 @@ class ModelLogger:
         return float(loss)
 
     @staticmethod
+    def _synchronize_loss(accelerator: Accelerator, loss):
+        loss = ModelLogger._normalize_loss(loss)
+        if loss is None:
+            return None
+        loss_tensor = torch.tensor(loss, device=accelerator.device, dtype=torch.float32)
+        return accelerator.reduce(loss_tensor, reduction="mean").item()
+
+    @staticmethod
     def _format_loss_for_file(loss):
         if loss is None:
             return "na"
@@ -205,6 +213,17 @@ class ModelLogger:
     ):
         if not update_latest and not update_best:
             return
+        checkpoint_file_name = self._checkpoint_file_name(loss, forced=forced)
+
+        if forced:
+            self.force_checkpoint_files.add(checkpoint_file_name)
+        if update_latest:
+            self.latest_checkpoint_file = checkpoint_file_name
+            self.last_archive_step = self.num_steps
+        if update_best:
+            self.best_checkpoint_file = checkpoint_file_name
+            self.best_loss = loss
+
         accelerator.wait_for_everyone()
         state_dict = accelerator.get_state_dict(model)
         if not accelerator.is_main_process:
@@ -217,18 +236,8 @@ class ModelLogger:
         exported_state_dict = self.state_dict_converter(exported_state_dict)
         os.makedirs(self.output_path, exist_ok=True)
 
-        checkpoint_file_name = self._checkpoint_file_name(loss, forced=forced)
         checkpoint_path = os.path.join(self.output_path, checkpoint_file_name)
         accelerator.save(exported_state_dict, checkpoint_path, safe_serialization=True)
-
-        if forced:
-            self.force_checkpoint_files.add(checkpoint_file_name)
-        if update_latest:
-            self.latest_checkpoint_file = checkpoint_file_name
-            self.last_archive_step = self.num_steps
-        if update_best:
-            self.best_checkpoint_file = checkpoint_file_name
-            self.best_loss = loss
 
         self._update_symlink("latest.safetensors", self.latest_checkpoint_file)
         self._update_symlink("best.safetensors", self.best_checkpoint_file)
@@ -240,7 +249,7 @@ class ModelLogger:
         self.num_steps += 1
         self.init_wandb(accelerator)
 
-        loss = self._normalize_loss(kwargs.get("loss"))
+        loss = self._synchronize_loss(accelerator, kwargs.get("loss"))
         if loss is not None and self.wandb_run is not None:
             self.wandb_run.log({"loss": loss, "step": self.num_steps}, step=self.num_steps)
 
@@ -267,7 +276,7 @@ class ModelLogger:
 
     def on_epoch_end(self, accelerator: Accelerator, model: torch.nn.Module, epoch_id, loss=None, training_state_fn=None):
         del epoch_id
-        loss = self._normalize_loss(loss)
+        loss = self._synchronize_loss(accelerator, loss)
         should_save_best = loss is not None and (
             self.best_loss is None or loss < self.best_loss
         )
@@ -288,7 +297,7 @@ class ModelLogger:
             and self.last_archive_step != self.num_steps
         )
         if should_save_final_step:
-            loss = self._normalize_loss(loss)
+            loss = self._synchronize_loss(accelerator, loss)
             should_save_best = loss is not None and (
                 self.best_loss is None or loss < self.best_loss
             )

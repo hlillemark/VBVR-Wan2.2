@@ -388,6 +388,14 @@ class Wan22TI2V5BVBVRBenchRunner:
         log_ground_truth_video=True,
         process_index=0,
         num_processes=1,
+        num_inference_steps=50,
+        sigma_shift=5.0,
+        inference_schedule="sigma_shift",
+        schedule_sd3_r=6.0,
+        schedule_c_interp=0.8,
+        schedule_c_start=1.0,
+        schedule_c_t_end=0.999,
+        schedule_c_grid_size=4096,
     ):
         self.validate_paths()
         pipe = self.apply_checkpoint(checkpoint_path=checkpoint_path, checkpoint_state_dict=checkpoint_state_dict)
@@ -451,6 +459,14 @@ class Wan22TI2V5BVBVRBenchRunner:
                 negative_prompt=self.negative_prompt,
                 input_image=input_image,
                 num_frames=num_frames,
+                num_inference_steps=num_inference_steps,
+                sigma_shift=sigma_shift,
+                inference_schedule=inference_schedule,
+                schedule_sd3_r=schedule_sd3_r,
+                schedule_c_interp=schedule_c_interp,
+                schedule_c_start=schedule_c_start,
+                schedule_c_t_end=schedule_c_t_end,
+                schedule_c_grid_size=schedule_c_grid_size,
                 seed=sample_seed_value,
                 tiled=True,
                 height=input_image.height,
@@ -474,6 +490,9 @@ class Wan22TI2V5BVBVRBenchRunner:
                 "width": input_image.width,
                 "seed": sample_seed_value,
                 "generation_seconds": generation_seconds,
+                "num_inference_steps": num_inference_steps,
+                "sigma_shift": sigma_shift,
+                "inference_schedule": inference_schedule,
                 "process_index": process_index,
             }
             manifest.append(record)

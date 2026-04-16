@@ -248,7 +248,7 @@ class BasePipeline(torch.nn.Module):
         if inpaint_mask is not None:
             noise_pred_expected = scheduler.return_to_timestep(scheduler.timesteps[progress_id], latents, input_latents)
             noise_pred = self.blend_with_mask(noise_pred_expected, noise_pred, inpaint_mask)
-        latents_next = scheduler.step(noise_pred, timestep, latents)
+        latents_next = scheduler.step(noise_pred, timestep, latents, progress_id=progress_id)
         return latents_next
     
     

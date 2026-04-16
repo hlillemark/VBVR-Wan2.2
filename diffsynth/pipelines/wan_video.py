@@ -242,6 +242,12 @@ class WanVideoPipeline(BasePipeline):
         # Scheduler
         num_inference_steps: Optional[int] = 50,
         sigma_shift: Optional[float] = 5.0,
+        inference_schedule: Optional[Literal["linear", "sigma_shift", "sd3", "c_function"]] = "sigma_shift",
+        schedule_sd3_r: Optional[float] = 6.0,
+        schedule_c_interp: Optional[float] = 0.8,
+        schedule_c_start: Optional[float] = 1.0,
+        schedule_c_t_end: Optional[float] = 0.999,
+        schedule_c_grid_size: Optional[int] = 4096,
         # Speed control
         motion_bucket_id: Optional[int] = None,
         # LongCat-Video
@@ -268,7 +274,17 @@ class WanVideoPipeline(BasePipeline):
         output_type: Optional[Literal["quantized", "floatpoint"]] = "quantized",
     ):
         # Scheduler
-        self.scheduler.set_timesteps(num_inference_steps, denoising_strength=denoising_strength, shift=sigma_shift)
+        self.scheduler.set_timesteps(
+            num_inference_steps,
+            denoising_strength=denoising_strength,
+            shift=sigma_shift,
+            inference_schedule=inference_schedule,
+            sd3_r=schedule_sd3_r,
+            c_interp=schedule_c_interp,
+            c_start=schedule_c_start,
+            c_t_end=schedule_c_t_end,
+            c_grid_size=schedule_c_grid_size,
+        )
         
         # Inputs
         inputs_posi = {
@@ -291,7 +307,7 @@ class WanVideoPipeline(BasePipeline):
             "seed": seed, "rand_device": rand_device,
             "height": height, "width": width, "num_frames": num_frames,
             "cfg_scale": cfg_scale, "cfg_merge": cfg_merge,
-            "sigma_shift": sigma_shift,
+            "sigma_shift": sigma_shift, "inference_schedule": inference_schedule,
             "motion_bucket_id": motion_bucket_id,
             "longcat_video": longcat_video,
             "tiled": tiled, "tile_size": tile_size, "tile_stride": tile_stride,
@@ -331,7 +347,12 @@ class WanVideoPipeline(BasePipeline):
                 noise_pred = noise_pred_posi
 
             # Scheduler
-            inputs_shared["latents"] = self.scheduler.step(noise_pred, self.scheduler.timesteps[progress_id], inputs_shared["latents"])
+            inputs_shared["latents"] = self.scheduler.step(
+                noise_pred,
+                self.scheduler.timesteps[progress_id],
+                inputs_shared["latents"],
+                progress_id=progress_id,
+            )
             if "first_frame_latents" in inputs_shared:
                 inputs_shared["latents"][:, :, 0:1] = inputs_shared["first_frame_latents"]
         
