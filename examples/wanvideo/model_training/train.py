@@ -173,6 +173,7 @@ def wan_parser():
     parser.add_argument("--dataset_config_path", type=str, default=None, help="Path to a JSON config file containing multiple datasets. Each entry should have 'root' and 'annotation' keys.")
     parser.add_argument("--framewise_decoding", default=False, action="store_true", help="Enable it if this model is a WanToDance global model.")
     parser.add_argument("--finetuning_mode", type=str, default="flow", choices=["flow", "eqf"], help="Flow keeps standard timestep conditioning; EqF zeroes the timestep tensor before the Wan DiT forward.")
+    parser.add_argument("--resume_wandb_run", type=str, default=None, help="Optional Weights & Biases run ID to resume. If provided, training resumes logging into that exact run.")
     parser.add_argument("--eval_bench_root", type=str, default=None, help="Optional VBVR-Bench root for periodic evaluation during training.")
     parser.add_argument("--evalkit_path", type=str, default=None, help="Optional VBVR-EvalKit repository path for numeric evaluation during training.")
     parser.add_argument("--eval_steps", type=int, default=None, help="Run VBVR evaluation every N optimizer steps.")
@@ -379,6 +380,7 @@ if __name__ == "__main__":
             )
             if key != "inference_schedule"
         },
+        wandb_resume_id=args.resume_wandb_run,
     )
     launcher_map = {
         "sft:data_process": launch_data_process_task,

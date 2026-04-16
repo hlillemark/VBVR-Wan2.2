@@ -31,6 +31,7 @@ class ModelLogger:
         finetuning_mode="flow",
         recommended_inference_schedule="sigma_shift",
         recommended_inference_kwargs=None,
+        wandb_resume_id=None,
     ):
         self.output_path = output_path
         self.remove_prefix_in_ckpt = remove_prefix_in_ckpt
@@ -40,6 +41,7 @@ class ModelLogger:
         self.finetuning_mode = str(finetuning_mode)
         self.recommended_inference_schedule = str(recommended_inference_schedule)
         self.recommended_inference_kwargs = dict(recommended_inference_kwargs or {})
+        self.wandb_resume_id = wandb_resume_id
         self.num_steps = 0
         self.last_archive_step = None
         self.best_loss = None
@@ -104,6 +106,7 @@ class ModelLogger:
             "finetuning_mode": self.finetuning_mode,
             "recommended_inference_schedule": self.recommended_inference_schedule,
             "recommended_inference_kwargs": dict(self.recommended_inference_kwargs),
+            "wandb_resume_id": self.wandb_resume_id,
         }
 
     def _latest_training_state_path(self):
@@ -138,6 +141,7 @@ class ModelLogger:
         self.recommended_inference_kwargs = dict(
             state_dict.get("recommended_inference_kwargs", self.recommended_inference_kwargs)
         )
+        self.wandb_resume_id = state_dict.get("wandb_resume_id", self.wandb_resume_id)
         legacy_best_metric = state_dict.get("best_metric")
         if self.best_loss is None and isinstance(legacy_best_metric, dict):
             legacy_loss = legacy_best_metric.get("value")
@@ -154,13 +158,18 @@ class ModelLogger:
             self.wandb_import_failed = True
             return
         run_name = os.path.basename(os.path.normpath(self.output_path)) or "training"
-        self.wandb_run = wandb.init(
-            entity="eqforcing",
-            project="eqf",
-            name=run_name,
-            config={"output_path": self.output_path},
-            reinit=True,
-        )
+        init_kwargs = {
+            "entity": "eqforcing",
+            "project": "eqf",
+            "name": run_name,
+            "config": {"output_path": self.output_path},
+            "reinit": True,
+        }
+        if self.wandb_resume_id is not None:
+            init_kwargs["id"] = self.wandb_resume_id
+            init_kwargs["resume"] = "must"
+        self.wandb_run = wandb.init(**init_kwargs)
+        self.wandb_resume_id = getattr(self.wandb_run, "id", self.wandb_resume_id)
 
     def _build_training_state_payload(self, training_state_fn, model_file_name):
         if training_state_fn is None:

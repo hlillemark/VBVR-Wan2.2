@@ -226,6 +226,9 @@ def launch_training_task(
         optimizer.load_state_dict(resume_state["optimizer"])
         scheduler.load_state_dict(resume_state["scheduler"])
         model_logger.load_state_dict(resume_state.get("logger", {}))
+        explicit_wandb_resume_id = None if args is None else getattr(args, "resume_wandb_run", None)
+        if explicit_wandb_resume_id is not None:
+            model_logger.wandb_resume_id = explicit_wandb_resume_id
         resume_finetuning_mode = resolve_finetuning_mode(resume_state, fallback=model_logger.finetuning_mode)
         model_finetuning_mode = getattr(model, "finetuning_mode", resume_finetuning_mode)
         if model_finetuning_mode != resume_finetuning_mode:

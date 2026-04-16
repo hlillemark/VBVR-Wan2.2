@@ -149,6 +149,8 @@ accelerate launch \
     --num_frames 209 \
     --batch_size 1 \
     --gradient_accumulation_steps 1 \
+    --training_seed 42 \
+    --dataloader_seed 42 \
     --dataset_num_workers 4 \
     --dataloader_prefetch_factor 2 \
     --dataloader_pin_memory \
@@ -190,6 +192,8 @@ accelerate launch \
     --num_frames 209 \
     --batch_size 1 \
     --gradient_accumulation_steps 4 \
+    --training_seed 42 \
+    --dataloader_seed 42 \
     --dataset_num_workers 4 \
     --dataloader_prefetch_factor 2 \
     --dataloader_pin_memory \
@@ -221,6 +225,8 @@ In `--model_paths`, the three `.safetensors` files are the Wan DiT checkpoint sh
 `--use_gradient_checkpointing` is optional, but it is recommended when memory is tight. Namely on H100 we need it, but on H200 we don't.
 
 The `--eval_*` arguments are optional. They enable periodic VBVR-Bench inference during training, saving generated videos under `./outputs/Wan2.2-TI2V-5B_<mode>_vbvr/vbvr_eval/step-*`. Add `--eval_run_numeric` together with `--evalkit_path` to also run VBVR-EvalKit and log quantitative metrics at each eval step. For EqF runs, use `c_function` for periodic benchmark evaluation.
+
+Deterministic dataloader ordering is enabled by default. We recommend keeping `--training_seed` and `--dataloader_seed` explicit in long-running or resumable jobs so the intended ordering is obvious in your launch command.
 
 #### LTX-2.3 I2AV
 

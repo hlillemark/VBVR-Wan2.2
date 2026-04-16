@@ -40,7 +40,7 @@ def add_training_config(parser: argparse.ArgumentParser):
     parser.add_argument("--batch_size", type=int, default=1, help="Training batch size per process.")
     parser.add_argument("--training_seed", type=int, default=42, help="Default random seed for deterministic training and resume.")
     parser.add_argument("--dataloader_seed", type=int, default=None, help="Optional seed override for deterministic dataloader ordering. Defaults to --training_seed.")
-    parser.add_argument("--disable_deterministic_dataloader", dest="deterministic_dataloader", default=False, action="store_false", help="Disable deterministic dataloader ordering for debugging.")
+    parser.add_argument("--disable_deterministic_dataloader", dest="deterministic_dataloader", default=True, action="store_false", help="Disable deterministic dataloader ordering for debugging.")
     parser.add_argument("--trainable_models", type=str, default=None, help="Models to train, e.g., dit, vae, text_encoder.")
     parser.add_argument("--find_unused_parameters", default=False, action="store_true", help="Whether to find unused parameters in DDP.")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay.")
