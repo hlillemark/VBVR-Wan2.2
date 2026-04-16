@@ -1,5 +1,5 @@
 from .operators import *
-import torch, json, pandas
+import os, torch, json, pandas
 
 
 class UnifiedDataset(torch.utils.data.Dataset):
@@ -24,6 +24,17 @@ class UnifiedDataset(torch.utils.data.Dataset):
         self.cached_data = []
         self.load_from_cache = metadata_path is None
         self.load_metadata(metadata_path)
+
+    def _make_absolute_source_path(self, value):
+        if isinstance(value, str):
+            if os.path.isabs(value):
+                return value
+            if self.base_path is None:
+                return value
+            return os.path.abspath(os.path.join(self.base_path, value))
+        if isinstance(value, list):
+            return [self._make_absolute_source_path(item) for item in value]
+        return value
     
     @staticmethod
     def default_image_operator(
@@ -92,6 +103,8 @@ class UnifiedDataset(torch.utils.data.Dataset):
             data = self.cached_data_operator(data)
         else:
             data = self.data[data_id % len(self.data)].copy()
+            if "clip_path" in data:
+                data["__sample_source__"] = self._make_absolute_source_path(data["clip_path"])
             for key in self.data_file_keys:
                 if key in data:
                     if key in self.special_operator_map:

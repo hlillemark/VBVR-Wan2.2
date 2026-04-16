@@ -29,6 +29,21 @@ from ..models.wav2vec import WanS2VAudioEncoder
 from ..models.longcat_video_dit import LongCatVideoTransformer3DModel
 
 
+def normalize_finetuning_mode(finetuning_mode):
+    if finetuning_mode is None:
+        return "flow"
+    finetuning_mode = str(finetuning_mode)
+    if finetuning_mode not in {"flow", "eqf"}:
+        raise ValueError(f"Unsupported finetuning_mode: {finetuning_mode}")
+    return finetuning_mode
+
+
+def maybe_zero_timestep_conditioning(timestep: torch.Tensor, finetuning_mode):
+    if normalize_finetuning_mode(finetuning_mode) != "eqf":
+        return timestep
+    return torch.zeros_like(timestep)
+
+
 class WanVideoPipeline(BasePipeline):
 
     def __init__(self, device=get_device_type(), torch_dtype=torch.bfloat16):
@@ -37,6 +52,7 @@ class WanVideoPipeline(BasePipeline):
             height_division_factor=16, width_division_factor=16, time_division_factor=4, time_division_remainder=1
         )
         self.scheduler = FlowMatchScheduler("Wan")
+        self.finetuning_mode = "flow"
         self.tokenizer: HuggingfaceTokenizer = None
         self.audio_processor: Wav2Vec2Processor = None
         self.text_encoder: WanTextEncoder = None
@@ -242,6 +258,12 @@ class WanVideoPipeline(BasePipeline):
         # Scheduler
         num_inference_steps: Optional[int] = 50,
         sigma_shift: Optional[float] = 5.0,
+        inference_schedule: Optional[Literal["linear", "sigma_shift", "sd3", "c_function"]] = "sigma_shift",
+        schedule_sd3_r: Optional[float] = 6.0,
+        schedule_c_interp: Optional[float] = 0.8,
+        schedule_c_start: Optional[float] = 1.0,
+        schedule_c_t_end: Optional[float] = 0.999,
+        schedule_c_grid_size: Optional[int] = 4096,
         # Speed control
         motion_bucket_id: Optional[int] = None,
         # LongCat-Video
@@ -266,9 +288,20 @@ class WanVideoPipeline(BasePipeline):
         # progress_bar
         progress_bar_cmd=tqdm,
         output_type: Optional[Literal["quantized", "floatpoint"]] = "quantized",
+        finetuning_mode: Optional[Literal["flow", "eqf"]] = None,
     ):
         # Scheduler
-        self.scheduler.set_timesteps(num_inference_steps, denoising_strength=denoising_strength, shift=sigma_shift)
+        self.scheduler.set_timesteps(
+            num_inference_steps,
+            denoising_strength=denoising_strength,
+            shift=sigma_shift,
+            inference_schedule=inference_schedule,
+            sd3_r=schedule_sd3_r,
+            c_interp=schedule_c_interp,
+            c_start=schedule_c_start,
+            c_t_end=schedule_c_t_end,
+            c_grid_size=schedule_c_grid_size,
+        )
         
         # Inputs
         inputs_posi = {
@@ -291,7 +324,7 @@ class WanVideoPipeline(BasePipeline):
             "seed": seed, "rand_device": rand_device,
             "height": height, "width": width, "num_frames": num_frames,
             "cfg_scale": cfg_scale, "cfg_merge": cfg_merge,
-            "sigma_shift": sigma_shift,
+            "sigma_shift": sigma_shift, "inference_schedule": inference_schedule,
             "motion_bucket_id": motion_bucket_id,
             "longcat_video": longcat_video,
             "tiled": tiled, "tile_size": tile_size, "tile_stride": tile_stride,
@@ -302,6 +335,9 @@ class WanVideoPipeline(BasePipeline):
             "wantodance_music_path": wantodance_music_path, "wantodance_reference_image": wantodance_reference_image, "wantodance_fps": wantodance_fps,
             "wantodance_keyframes": wantodance_keyframes, "wantodance_keyframes_mask": wantodance_keyframes_mask,
             "framewise_decoding": framewise_decoding,
+            "finetuning_mode": normalize_finetuning_mode(
+                self.finetuning_mode if finetuning_mode is None else finetuning_mode
+            ),
         }
         for unit in self.units:
             inputs_shared, inputs_posi, inputs_nega = self.unit_runner(unit, self, inputs_shared, inputs_posi, inputs_nega)
@@ -331,7 +367,12 @@ class WanVideoPipeline(BasePipeline):
                 noise_pred = noise_pred_posi
 
             # Scheduler
-            inputs_shared["latents"] = self.scheduler.step(noise_pred, self.scheduler.timesteps[progress_id], inputs_shared["latents"])
+            inputs_shared["latents"] = self.scheduler.step(
+                noise_pred,
+                self.scheduler.timesteps[progress_id],
+                inputs_shared["latents"],
+                progress_id=progress_id,
+            )
             if "first_frame_latents" in inputs_shared:
                 inputs_shared["latents"][:, :, 0:1] = inputs_shared["first_frame_latents"]
         
@@ -376,16 +417,21 @@ class WanVideoUnit_ShapeChecker(PipelineUnit):
 class WanVideoUnit_NoiseInitializer(PipelineUnit):
     def __init__(self):
         super().__init__(
-            input_params=("height", "width", "num_frames", "seed", "rand_device", "vace_reference_image"),
+            input_params=("height", "width", "num_frames", "seed", "rand_device", "vace_reference_image", "input_video", "input_image"),
             output_params=("noise",)
         )
 
-    def process(self, pipe: WanVideoPipeline, height, width, num_frames, seed, rand_device, vace_reference_image):
+    def process(self, pipe: WanVideoPipeline, height, width, num_frames, seed, rand_device, vace_reference_image, input_video, input_image):
         length = (num_frames - 1) // 4 + 1
+        batch_size = 1
+        if isinstance(input_video, list) and len(input_video) > 0 and isinstance(input_video[0], list):
+            batch_size = len(input_video)
+        elif isinstance(input_image, list):
+            batch_size = len(input_image)
         if vace_reference_image is not None:
             f = len(vace_reference_image) if isinstance(vace_reference_image, list) else 1
             length += f
-        shape = (1, pipe.vae.model.z_dim, length, height // pipe.vae.upsampling_factor, width // pipe.vae.upsampling_factor)
+        shape = (batch_size, pipe.vae.model.z_dim, length, height // pipe.vae.upsampling_factor, width // pipe.vae.upsampling_factor)
         noise = pipe.generate_noise(shape, seed=seed, rand_device=rand_device)
         if vace_reference_image is not None:
             noise = torch.concat((noise[:, :, -f:], noise[:, :, :-f]), dim=2)
@@ -463,10 +509,18 @@ class WanVideoUnit_ImageEmbedderCLIP(PipelineUnit):
         if input_image is None or pipe.image_encoder is None or not pipe.dit.require_clip_embedding:
             return {}
         pipe.load_models_to_device(self.onload_model_names)
-        image = pipe.preprocess_image(input_image.resize((width, height))).to(pipe.device)
+        if isinstance(input_image, list):
+            input_image = [image.resize((width, height)) for image in input_image]
+        else:
+            input_image = input_image.resize((width, height))
+        image = pipe.preprocess_image(input_image).to(pipe.device)
         clip_context = pipe.image_encoder.encode_image([image])
         if end_image is not None:
-            end_image = pipe.preprocess_image(end_image.resize((width, height))).to(pipe.device)
+            if isinstance(end_image, list):
+                end_image = [image.resize((width, height)) for image in end_image]
+            else:
+                end_image = end_image.resize((width, height))
+            end_image = pipe.preprocess_image(end_image).to(pipe.device)
             if pipe.dit.has_image_pos_emb:
                 clip_context = torch.concat([clip_context, pipe.image_encoder.encode_image([end_image])], dim=1)
         clip_context = clip_context.to(dtype=pipe.torch_dtype, device=pipe.device)
@@ -524,8 +578,12 @@ class WanVideoUnit_ImageEmbedderFused(PipelineUnit):
         if input_image is None or not pipe.dit.fuse_vae_embedding_in_latents:
             return {}
         pipe.load_models_to_device(self.onload_model_names)
-        image = pipe.preprocess_image(input_image.resize((width, height))).transpose(0, 1)
-        z = pipe.vae.encode([image], device=pipe.device, tiled=tiled, tile_size=tile_size, tile_stride=tile_stride)
+        if isinstance(input_image, list):
+            input_image = [image.resize((width, height)) for image in input_image]
+        else:
+            input_image = input_image.resize((width, height))
+        image = pipe.preprocess_image(input_image).unsqueeze(2)
+        z = pipe.vae.encode(image.to(dtype=pipe.torch_dtype, device=pipe.device), device=pipe.device, tiled=tiled, tile_size=tile_size, tile_stride=tile_stride)
         latents[:, :, 0: 1] = z
         return {"latents": latents, "fuse_vae_embedding_in_latents": True, "first_frame_latents": z}
 
@@ -1311,6 +1369,7 @@ def model_fn_wan_video(
     wantodance_fps: float = 30.0,
     music_feature = None,
     skip_9th_layer: bool = False,
+    finetuning_mode: str = "flow",
     **kwargs,
 ):
     if sliding_window_size is not None and sliding_window_stride is not None:
@@ -1371,6 +1430,9 @@ def model_fn_wan_video(
         from xfuser.core.distributed import (get_sequence_parallel_rank,
                                             get_sequence_parallel_world_size,
                                             get_sp_group)
+
+    finetuning_mode = normalize_finetuning_mode(finetuning_mode)
+    timestep = maybe_zero_timestep_conditioning(timestep, finetuning_mode)
 
     # Timestep
     if dit.seperated_timestep and fuse_vae_embedding_in_latents:

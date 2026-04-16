@@ -1,5 +1,7 @@
-import torch, math
+import math
+import torch
 from typing_extensions import Literal
+from .inference_schedules import InferenceScheduleResolver
 
 
 class FlowMatchScheduler():
@@ -15,6 +17,45 @@ class FlowMatchScheduler():
             "Qwen-Image-Lightning": FlowMatchScheduler.set_timesteps_qwen_image_lightning,
         }.get(template, FlowMatchScheduler.set_timesteps_flux)
         self.num_train_timesteps = 1000
+        self.schedule_name = None
+        self.solver_sigmas = None
+        self.solver_timesteps = None
+        self.step_sizes = None
+        self.step_scales = None
+
+    @staticmethod
+    def _format_schedule_metadata(sigmas, timesteps, solver_sigmas=None, step_sizes=None, step_scales=None, schedule_name=None):
+        sigmas = sigmas.to(dtype=torch.float32)
+        timesteps = timesteps.to(dtype=torch.float32)
+        solver_sigmas = sigmas.clone() if solver_sigmas is None else solver_sigmas.to(dtype=torch.float32)
+        solver_timesteps = solver_sigmas * 1000
+
+        if step_sizes is None:
+            next_sigmas = torch.cat([sigmas[1:], torch.zeros(1, dtype=sigmas.dtype)])
+            step_sizes = next_sigmas - sigmas
+        else:
+            step_sizes = step_sizes.to(dtype=torch.float32)
+
+        if step_scales is None:
+            next_solver_sigmas = torch.cat([solver_sigmas[1:], torch.zeros(1, dtype=solver_sigmas.dtype)])
+            solver_step_sizes = next_solver_sigmas - solver_sigmas
+            denom = torch.sign(solver_step_sizes) * torch.clamp(
+                solver_step_sizes.abs(),
+                min=torch.finfo(solver_step_sizes.dtype).eps,
+            )
+            step_scales = step_sizes / denom
+        else:
+            step_scales = step_scales.to(dtype=torch.float32)
+
+        return {
+            "sigmas": sigmas,
+            "timesteps": timesteps,
+            "solver_sigmas": solver_sigmas,
+            "solver_timesteps": solver_timesteps,
+            "step_sizes": step_sizes,
+            "step_scales": step_scales,
+            "schedule_name": schedule_name,
+        }
 
     @staticmethod
     def set_timesteps_flux(num_inference_steps=100, denoising_strength=1.0, shift=None):
@@ -29,16 +70,85 @@ class FlowMatchScheduler():
         return sigmas, timesteps
     
     @staticmethod
-    def set_timesteps_wan(num_inference_steps=100, denoising_strength=1.0, shift=None):
+    def set_timesteps_wan(
+        num_inference_steps=100,
+        denoising_strength=1.0,
+        shift=None,
+        inference_schedule: Literal["linear", "sigma_shift", "sd3", "c_function"] = "sigma_shift",
+        sd3_r: float = 6.0,
+        c_interp: float = 0.8,
+        c_start: float = 1.0,
+        c_t_end: float = 0.999,
+        c_grid_size: int = 4096,
+    ):
         sigma_min = 0.0
         sigma_max = 1.0
         shift = 5 if shift is None else shift
         num_train_timesteps = 1000
         sigma_start = sigma_min + (sigma_max - sigma_min) * denoising_strength
-        sigmas = torch.linspace(sigma_start, sigma_min, num_inference_steps + 1)[:-1]
-        sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
+        solver_sigmas = torch.linspace(sigma_start, sigma_min, num_inference_steps + 1)[:-1]
+
+        if inference_schedule == "linear":
+            sigmas = solver_sigmas.clone()
+            timesteps = sigmas * num_train_timesteps
+            return FlowMatchScheduler._format_schedule_metadata(
+                sigmas,
+                timesteps,
+                solver_sigmas=solver_sigmas,
+                schedule_name="linear",
+            )
+
+        if inference_schedule == "sigma_shift":
+            sigmas = shift * solver_sigmas / (1 + (shift - 1) * solver_sigmas)
+            timesteps = sigmas * num_train_timesteps
+            return FlowMatchScheduler._format_schedule_metadata(
+                sigmas,
+                timesteps,
+                solver_sigmas=solver_sigmas,
+                schedule_name="sigma_shift",
+            )
+
+        if sigma_start <= 0:
+            sigmas = solver_sigmas.clone()
+            timesteps = sigmas * num_train_timesteps
+            step_sizes = torch.zeros_like(sigmas)
+            step_scales = torch.zeros_like(sigmas)
+            return FlowMatchScheduler._format_schedule_metadata(
+                sigmas,
+                timesteps,
+                solver_sigmas=solver_sigmas,
+                step_sizes=step_sizes,
+                step_scales=step_scales,
+                schedule_name=inference_schedule,
+            )
+
+        solver_time = torch.linspace(0.0, 1.0, num_inference_steps + 1, dtype=solver_sigmas.dtype)[:-1]
+        resolver = InferenceScheduleResolver(
+            sample_with_warp=True,
+            function_type=inference_schedule,
+            sd3_r=sd3_r,
+            c_interp=c_interp,
+            c_start=c_start,
+            c_t_end=c_t_end,
+            c_grid_size=c_grid_size,
+            device=solver_time.device,
+            dtype=solver_time.dtype,
+        )
+        native_progress, step_scales = resolver.resolve(solver_time)
+        sigmas = sigma_start * (1.0 - native_progress)
         timesteps = sigmas * num_train_timesteps
-        return sigmas, timesteps
+
+        next_solver_time = torch.cat([solver_time[1:], torch.ones(1, dtype=solver_time.dtype)])
+        solver_step_size = next_solver_time - solver_time
+        step_sizes = -sigma_start * step_scales * solver_step_size
+        return FlowMatchScheduler._format_schedule_metadata(
+            sigmas,
+            timesteps,
+            solver_sigmas=solver_sigmas,
+            step_sizes=step_sizes,
+            step_scales=step_scales,
+            schedule_name=inference_schedule,
+        )
     
     @staticmethod
     def _calculate_shift_qwen_image(image_seq_len, base_seq_len=256, max_seq_len=8192, base_shift=0.5, max_shift=0.9):
@@ -187,18 +297,37 @@ class FlowMatchScheduler():
         self.linear_timesteps_weights = bsmntw_weighing
         
     def set_timesteps(self, num_inference_steps=100, denoising_strength=1.0, training=False, **kwargs):
-        self.sigmas, self.timesteps = self.set_timesteps_fn(
+        results = self.set_timesteps_fn(
             num_inference_steps=num_inference_steps,
             denoising_strength=denoising_strength,
             **kwargs,
         )
+        if isinstance(results, dict):
+            self.sigmas = results["sigmas"]
+            self.timesteps = results["timesteps"]
+            self.solver_sigmas = results["solver_sigmas"]
+            self.solver_timesteps = results["solver_timesteps"]
+            self.step_sizes = results["step_sizes"]
+            self.step_scales = results["step_scales"]
+            self.schedule_name = results["schedule_name"]
+        else:
+            self.sigmas, self.timesteps = results
+            metadata = self._format_schedule_metadata(self.sigmas, self.timesteps)
+            self.solver_sigmas = metadata["solver_sigmas"]
+            self.solver_timesteps = metadata["solver_timesteps"]
+            self.step_sizes = metadata["step_sizes"]
+            self.step_scales = metadata["step_scales"]
+            self.schedule_name = metadata["schedule_name"]
         if training:
             self.set_training_weight()
             self.training = True
         else:
             self.training = False
 
-    def step(self, model_output, timestep, sample, to_final=False, **kwargs):
+    def step(self, model_output, timestep, sample, to_final=False, progress_id=None, **kwargs):
+        if progress_id is not None and self.step_sizes is not None:
+            step_size = self.step_sizes[progress_id].to(device=sample.device, dtype=sample.dtype)
+            return sample + model_output * step_size
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.cpu()
         timestep_id = torch.argmin((self.timesteps - timestep).abs())

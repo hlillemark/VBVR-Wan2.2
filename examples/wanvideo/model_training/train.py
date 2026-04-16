@@ -1,9 +1,33 @@
 import torch, os, argparse, accelerate, warnings, json
+from pathlib import Path
 from diffsynth.core import UnifiedDataset
 from diffsynth.core.data.operators import LoadVideo, LoadAudio, ImageCropAndResize, ToAbsolutePath
 from diffsynth.pipelines.wan_video import WanVideoPipeline, ModelConfig
+from diffsynth.evaluation import TrainingVBVREvalHook
 from diffsynth.diffusion import *
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
+def default_eval_schedule_config(finetuning_mode):
+    if finetuning_mode == "eqf":
+        return {
+            "inference_schedule": "c_function",
+            "sigma_shift": 5.0,
+            "schedule_sd3_r": 6.0,
+            "schedule_c_interp": 0.8,
+            "schedule_c_start": 1.0,
+            "schedule_c_t_end": 0.999,
+            "schedule_c_grid_size": 4096,
+        }
+    return {
+        "inference_schedule": "sigma_shift",
+        "sigma_shift": 5.0,
+        "schedule_sd3_r": 6.0,
+        "schedule_c_interp": 0.8,
+        "schedule_c_start": 1.0,
+        "schedule_c_t_end": 0.999,
+        "schedule_c_grid_size": 4096,
+    }
 
 
 class WanTrainingModule(DiffusionTrainingModule):
@@ -23,12 +47,14 @@ class WanTrainingModule(DiffusionTrainingModule):
         task="sft",
         max_timestep_boundary=1.0,
         min_timestep_boundary=0.0,
+        finetuning_mode="flow",
     ):
         super().__init__()
         # Warning
         if not use_gradient_checkpointing:
-            warnings.warn("Gradient checkpointing is detected as disabled. To prevent out-of-memory errors, the training framework will forcibly enable gradient checkpointing.")
-            use_gradient_checkpointing = True
+            warnings.warn("Gradient checkpointing is detected as disabled...")
+            # warnings.warn("Gradient checkpointing is detected as disabled. To prevent out-of-memory errors, the training framework will forcibly enable gradient checkpointing.")
+            # use_gradient_checkpointing = True
         
         # Load models
         model_configs = self.parse_model_configs(model_paths, model_id_with_origin_paths, fp8_models=fp8_models, offload_models=offload_models, device=device)
@@ -51,6 +77,8 @@ class WanTrainingModule(DiffusionTrainingModule):
         self.extra_inputs = extra_inputs.split(",") if extra_inputs is not None else []
         self.fp8_models = fp8_models
         self.task = task
+        self.finetuning_mode = "flow"
+        self.set_finetuning_mode(finetuning_mode)
         self.task_to_loss = {
             "sft:data_process": lambda pipe, *args: args,
             "direct_distill:data_process": lambda pipe, *args: args,
@@ -61,13 +89,32 @@ class WanTrainingModule(DiffusionTrainingModule):
         }
         self.max_timestep_boundary = max_timestep_boundary
         self.min_timestep_boundary = min_timestep_boundary
+
+    def set_finetuning_mode(self, finetuning_mode):
+        finetuning_mode = str(finetuning_mode)
+        if finetuning_mode not in {"flow", "eqf"}:
+            raise ValueError(f"Unsupported finetuning_mode: {finetuning_mode}")
+        self.finetuning_mode = finetuning_mode
+        self.pipe.finetuning_mode = finetuning_mode
+
+    def is_batched_video_list(self, value):
+        return isinstance(value, list) and len(value) > 0 and isinstance(value[0], list)
+
+    def sample_video(self, clip_path):
+        return clip_path[0] if self.is_batched_video_list(clip_path) else clip_path
         
     def parse_extra_inputs(self, data, extra_inputs, inputs_shared):
         for extra_input in extra_inputs:
             if extra_input == "input_image":
-                inputs_shared["input_image"] = data["clip_path"][0]
+                if self.is_batched_video_list(data["clip_path"]):
+                    inputs_shared["input_image"] = [clip[0] for clip in data["clip_path"]]
+                else:
+                    inputs_shared["input_image"] = data["clip_path"][0]
             elif extra_input == "end_image":
-                inputs_shared["end_image"] = data["clip_path"][-1]
+                if self.is_batched_video_list(data["clip_path"]):
+                    inputs_shared["end_image"] = [clip[-1] for clip in data["clip_path"]]
+                else:
+                    inputs_shared["end_image"] = data["clip_path"][-1]
             elif extra_input == "reference_image" or extra_input == "vace_reference_image":
                 inputs_shared[extra_input] = data[extra_input][0]
             else:
@@ -80,13 +127,15 @@ class WanTrainingModule(DiffusionTrainingModule):
     def get_pipeline_inputs(self, data):
         inputs_posi = {"prompt": data["text_annot"]}
         inputs_nega = {}
+        clip_path = data["clip_path"]
+        sample_clip = self.sample_video(clip_path)
         inputs_shared = {
             # Assume you are using this pipeline for inference,
             # please fill in the input parameters.
-            "input_video": data["clip_path"],
-            "height": data["clip_path"][0].size[1],
-            "width": data["clip_path"][0].size[0],
-            "num_frames": len(data["clip_path"]),
+            "input_video": clip_path,
+            "height": sample_clip[0].size[1],
+            "width": sample_clip[0].size[0],
+            "num_frames": len(sample_clip),
             # Please do not modify the following parameters
             # unless you clearly know what this will cause.
             "cfg_scale": 1,
@@ -98,6 +147,7 @@ class WanTrainingModule(DiffusionTrainingModule):
             "vace_scale": 1,
             "max_timestep_boundary": self.max_timestep_boundary,
             "min_timestep_boundary": self.min_timestep_boundary,
+            "finetuning_mode": self.finetuning_mode,
         }
         inputs_shared = self.parse_extra_inputs(data, self.extra_inputs, inputs_shared)
         return inputs_shared, inputs_posi, inputs_nega
@@ -122,6 +172,26 @@ def wan_parser():
     parser.add_argument("--initialize_model_on_cpu", default=False, action="store_true", help="Whether to initialize models on CPU.")
     parser.add_argument("--dataset_config_path", type=str, default=None, help="Path to a JSON config file containing multiple datasets. Each entry should have 'root' and 'annotation' keys.")
     parser.add_argument("--framewise_decoding", default=False, action="store_true", help="Enable it if this model is a WanToDance global model.")
+    parser.add_argument("--finetuning_mode", type=str, default="flow", choices=["flow", "eqf"], help="Flow keeps standard timestep conditioning; EqF zeroes the timestep tensor before the Wan DiT forward.")
+    parser.add_argument("--resume_wandb_run", type=str, default=None, help="Optional Weights & Biases run ID to resume. If provided, training resumes logging into that exact run.")
+    parser.add_argument("--eval_bench_root", type=str, default=None, help="Optional VBVR-Bench root for periodic evaluation during training.")
+    parser.add_argument("--evalkit_path", type=str, default=None, help="Optional VBVR-EvalKit repository path for numeric evaluation during training.")
+    parser.add_argument("--eval_steps", type=int, default=None, help="Run VBVR evaluation every N optimizer steps.")
+    parser.add_argument("--eval_num_videos", type=int, default=None, help="Maximum number of benchmark videos to generate per evaluation run.")
+    parser.add_argument("--eval_videos_per_task", type=int, default=1, help="Benchmark videos to generate per task during evaluation.")
+    parser.add_argument("--eval_splits", type=str, default="In-Domain_50,Out-of-Domain_50", help="Comma-separated benchmark splits for evaluation.")
+    parser.add_argument("--eval_task_names", type=str, default=None, help="Optional comma-separated benchmark task names for evaluation.")
+    parser.add_argument("--eval_target_num_frames", type=int, default=None, help="Optional frame cap for benchmark generation. Defaults to training num_frames.")
+    parser.add_argument("--eval_use_ground_truth_frame_count", default=False, action="store_true", help="Use raw benchmark video frame counts instead of training-matched clipping.")
+    parser.add_argument("--eval_run_numeric", default=False, action="store_true", help="Run VBVR-EvalKit scoring after generating benchmark videos.")
+    parser.add_argument("--eval_fps", type=int, default=16, help="FPS used when saving evaluation videos.")
+    parser.add_argument("--eval_inference_schedule", type=str, default="auto", choices=["auto", "linear", "sigma_shift", "sd3", "c_function"], help="Inference schedule used for periodic benchmark evaluation. 'auto' uses sigma_shift for flow and c_function for eqf.")
+    parser.add_argument("--eval_sigma_shift", type=float, default=5.0, help="Legacy Wan sigma shift used when periodic evaluation runs with sigma_shift.")
+    parser.add_argument("--eval_schedule_sd3_r", type=float, default=6.0, help="SD3 warp parameter used when periodic evaluation runs with sd3.")
+    parser.add_argument("--eval_schedule_c_interp", type=float, default=0.8, help="C-function breakpoint used when periodic evaluation runs with c_function.")
+    parser.add_argument("--eval_schedule_c_start", type=float, default=1.0, help="C-function initial scale used when periodic evaluation runs with c_function.")
+    parser.add_argument("--eval_schedule_c_t_end", type=float, default=0.999, help="C-function terminal native time used when periodic evaluation runs with c_function.")
+    parser.add_argument("--eval_schedule_c_grid_size", type=int, default=4096, help="Lookup-table resolution used when periodic evaluation runs with c_function.")
     return parser
 
 
@@ -193,6 +263,8 @@ def create_dataset_from_config(config_path, args):
 if __name__ == "__main__":
     parser = wan_parser()
     args = parser.parse_args()
+    if args.eval_run_numeric and args.evalkit_path is None:
+        raise ValueError("--evalkit_path is required when --eval_run_numeric is enabled.")
     accelerator = accelerate.Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         kwargs_handlers=[accelerate.DistributedDataParallelKwargs(find_unused_parameters=args.find_unused_parameters)],
@@ -247,10 +319,69 @@ if __name__ == "__main__":
         device="cpu" if args.initialize_model_on_cpu else accelerator.device,
         max_timestep_boundary=args.max_timestep_boundary,
         min_timestep_boundary=args.min_timestep_boundary,
+        finetuning_mode=args.finetuning_mode,
     )
+    evaluation_callback = None
+    if args.eval_bench_root is not None:
+        eval_schedule_config = default_eval_schedule_config(args.finetuning_mode)
+        if args.eval_inference_schedule != "auto":
+            eval_schedule_config["inference_schedule"] = args.eval_inference_schedule
+        eval_schedule_config.update(
+            {
+                "sigma_shift": args.eval_sigma_shift,
+                "schedule_sd3_r": args.eval_schedule_sd3_r,
+                "schedule_c_interp": args.eval_schedule_c_interp,
+                "schedule_c_start": args.eval_schedule_c_start,
+                "schedule_c_t_end": args.eval_schedule_c_t_end,
+                "schedule_c_grid_size": args.eval_schedule_c_grid_size,
+            }
+        )
+        model_dir = None
+        if args.model_paths is not None:
+            parsed_model_paths = json.loads(args.model_paths)
+            diffusion_entry = parsed_model_paths[0]
+            diffusion_file = diffusion_entry[0] if isinstance(diffusion_entry, list) else diffusion_entry
+            model_dir = str(Path(diffusion_file).parent)
+        if model_dir is None:
+            raise ValueError("Periodic benchmark evaluation currently requires --model_paths with local files.")
+        evaluation_callback = TrainingVBVREvalHook(
+            model_dir=model_dir,
+            bench_root=args.eval_bench_root,
+            evalkit_path=args.evalkit_path,
+            eval_steps=args.eval_steps,
+            max_videos=args.eval_num_videos,
+            videos_per_task=args.eval_videos_per_task,
+            splits=args.eval_splits,
+            task_names=args.eval_task_names,
+            target_num_frames=args.eval_target_num_frames or args.num_frames,
+            use_ground_truth_frame_count=args.eval_use_ground_truth_frame_count,
+            run_numeric_eval=args.eval_run_numeric,
+            fps=args.eval_fps,
+            finetuning_mode=args.finetuning_mode,
+            inference_schedule=eval_schedule_config["inference_schedule"],
+            sigma_shift=eval_schedule_config["sigma_shift"],
+            schedule_sd3_r=eval_schedule_config["schedule_sd3_r"],
+            schedule_c_interp=eval_schedule_config["schedule_c_interp"],
+            schedule_c_start=eval_schedule_config["schedule_c_start"],
+            schedule_c_t_end=eval_schedule_config["schedule_c_t_end"],
+            schedule_c_grid_size=eval_schedule_config["schedule_c_grid_size"],
+        )
     model_logger = ModelLogger(
         args.output_path,
         remove_prefix_in_ckpt=args.remove_prefix_in_ckpt,
+        evaluation_callback=evaluation_callback,
+        forced_save_steps=args.forced_save_steps,
+        finetuning_mode=args.finetuning_mode,
+        recommended_inference_schedule=eval_schedule_config["inference_schedule"] if args.eval_bench_root is not None else default_eval_schedule_config(args.finetuning_mode)["inference_schedule"],
+        recommended_inference_kwargs={
+            key: value
+            for key, value in (
+                eval_schedule_config.items() if args.eval_bench_root is not None else default_eval_schedule_config(args.finetuning_mode).items()
+            )
+            if key != "inference_schedule"
+        },
+        wandb_resume_id=args.resume_wandb_run,
+        save_best_checkpoint=args.enable_best_checkpoint,
     )
     launcher_map = {
         "sft:data_process": launch_data_process_task,
