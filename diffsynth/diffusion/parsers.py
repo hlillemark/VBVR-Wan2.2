@@ -52,6 +52,7 @@ def add_output_config(parser: argparse.ArgumentParser):
     parser.add_argument("--remove_prefix_in_ckpt", type=str, default="pipe.dit.", help="Remove prefix in ckpt.")
     parser.add_argument("--save_steps", type=int, default=None, help="Save a checkpoint every N optimizer (gradient) steps. If None, checkpoints will be saved every epoch.")
     parser.add_argument("--forced_save_steps", type=str, default=None, help="Comma-separated list of exact optimizer step numbers that should always trigger a checkpoint save.")
+    parser.add_argument("--enable_best_checkpoint", default=False, action="store_true", help="Also maintain a best-loss checkpoint and the best.safetensors alias. Disabled by default; only latest and any forced checkpoints are kept otherwise.")
     parser.add_argument("--resume_from_training_state", type=str, default=None, help="Optional path to a saved training state sidecar. If omitted, the runner auto-resumes from <output_path>/latest-training-state.pt when present.")
     parser.add_argument("--no_resume_training_state", default=False, action="store_true", help="Start from scratch even if a training state sidecar exists in the output directory.")
     return parser

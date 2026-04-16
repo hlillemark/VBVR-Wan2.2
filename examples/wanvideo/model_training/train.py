@@ -381,6 +381,7 @@ if __name__ == "__main__":
             if key != "inference_schedule"
         },
         wandb_resume_id=args.resume_wandb_run,
+        save_best_checkpoint=args.enable_best_checkpoint,
     )
     launcher_map = {
         "sft:data_process": launch_data_process_task,

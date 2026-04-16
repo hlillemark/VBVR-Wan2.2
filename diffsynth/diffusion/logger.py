@@ -32,6 +32,7 @@ class ModelLogger:
         recommended_inference_schedule="sigma_shift",
         recommended_inference_kwargs=None,
         wandb_resume_id=None,
+        save_best_checkpoint=False,
     ):
         self.output_path = output_path
         self.remove_prefix_in_ckpt = remove_prefix_in_ckpt
@@ -42,6 +43,7 @@ class ModelLogger:
         self.recommended_inference_schedule = str(recommended_inference_schedule)
         self.recommended_inference_kwargs = dict(recommended_inference_kwargs or {})
         self.wandb_resume_id = wandb_resume_id
+        self.save_best_checkpoint = bool(save_best_checkpoint)
         self.num_steps = 0
         self.last_archive_step = None
         self.best_loss = None
@@ -306,7 +308,10 @@ class ModelLogger:
         self._save_checkpoint_metadata(checkpoint_file_name)
 
         self._update_symlink("latest.safetensors", self.latest_checkpoint_file)
-        self._update_symlink("best.safetensors", self.best_checkpoint_file)
+        self._update_symlink(
+            "best.safetensors",
+            self.best_checkpoint_file if self.save_best_checkpoint else None,
+        )
         if update_latest:
             self._save_latest_training_state(training_state_fn, checkpoint_file_name)
         self._cleanup_output_dir()
@@ -327,8 +332,10 @@ class ModelLogger:
             forced_save
             or (save_steps is not None and save_steps > 0 and self.num_steps % save_steps == 0)
         )
-        should_save_best = loss is not None and (
-            self.best_loss is None or loss < self.best_loss
+        should_save_best = (
+            self.save_best_checkpoint
+            and loss is not None
+            and (self.best_loss is None or loss < self.best_loss)
         )
         self.save_checkpoint(
             accelerator,
@@ -343,8 +350,10 @@ class ModelLogger:
     def on_epoch_end(self, accelerator: Accelerator, model: torch.nn.Module, epoch_id, loss=None, training_state_fn=None):
         del epoch_id
         loss = self._synchronize_loss(accelerator, loss)
-        should_save_best = loss is not None and (
-            self.best_loss is None or loss < self.best_loss
+        should_save_best = (
+            self.save_best_checkpoint
+            and loss is not None
+            and (self.best_loss is None or loss < self.best_loss)
         )
         self.save_checkpoint(
             accelerator,
@@ -364,8 +373,10 @@ class ModelLogger:
         )
         if should_save_final_step:
             loss = self._synchronize_loss(accelerator, loss)
-            should_save_best = loss is not None and (
-                self.best_loss is None or loss < self.best_loss
+            should_save_best = (
+                self.save_best_checkpoint
+                and loss is not None
+                and (self.best_loss is None or loss < self.best_loss)
             )
             self.save_checkpoint(
                 accelerator,
